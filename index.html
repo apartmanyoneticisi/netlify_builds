@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vita — Personal Health Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --bg2: #141416;
+    --bg3: #1c1c1f;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0f0f2;
+    --muted: #888896;
+    --hint: #4a4a58;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --w: #4a9eff;
+    --blood: #e05555;
+    --mood: #8b84f7;
+    --meds: #2dbd8f;
+    --ex: #f5a623;
+    --sleep: #5ecfa8;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
+
+  /* Layout */
+  .shell { display: flex; height: 100vh; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: var(--bg2);
+    border-right: 0.5px solid var(--border);
+    display: flex; flex-direction: column; padding: 24px 12px;
+    overflow-y: auto;
+  }
+  .logo { font-family: var(--mono); font-size: 18px; font-weight: 500; letter-spacing: -0.5px; color: var(--text); padding: 0 8px 28px; }
+  .logo span { color: var(--muted); }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 400;
+    color: var(--muted); transition: all 0.15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left;
+  }
+  .nav-item i { font-size: 16px; width: 18px; flex-shrink: 0; }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: var(--bg3); color: var(--text); font-weight: 500; }
+  .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; margin-left: auto; }
+  .nav-sep { height: 0.5px; background: var(--border); margin: 12px 8px; }
+
+  /* Main */
+  .main { flex: 1; overflow-y: auto; padding: 28px 32px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 20px; }
+  .color-rule { height: 2px; border-radius: 2px; width: 32px; display: inline-block; margin-right: 10px; vertical-align: middle; }
+
+  /* Grid */
+  .g2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .g3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .g-dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+  /* Cards */
+  .card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .card + .card { margin-top: 0; }
+  .card-sm { background: var(--bg3); border-radius: var(--radius-sm); padding: 12px 14px; }
+  .sec { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hint); margin-bottom: 12px; }
+
+  /* Metric tiles */
+  .metric-val { font-size: 28px; font-weight: 500; font-family: var(--mono); letter-spacing: -1px; line-height: 1; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+  .metric-change { font-size: 12px; margin-top: 5px; color: var(--muted); }
+  .up { color: #e05555; }
+  .down { color: #2dbd8f; }
+
+  /* Form */
+  .form { display: flex; flex-direction: column; gap: 11px; }
+  .form label { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: block; letter-spacing: 0.04em; }
+  .form input, .form select, .form textarea {
+    width: 100%; padding: 8px 11px; border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); background: var(--bg3); color: var(--text);
+    font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s;
+  }
+  .form input:focus, .form select:focus, .form textarea:focus { border-color: rgba(255,255,255,0.25); }
+  .form select option { background: var(--bg3); }
+  .form textarea { resize: vertical; }
+  .btn { padding: 9px 20px; border-radius: 20px; border: none; background: var(--text); color: var(--bg); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-ghost { padding: 6px 13px; border-radius: 10px; border: 0.5px solid var(--border2); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; font-family: var(--font); }
+  .btn-ghost:hover { background: var(--bg3); color: var(--text); }
+
+  /* Entry list */
+  .entry-list { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
+  .entry { display: flex; justify-content: space-between; align-items: center; padding: 8px 11px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 13px; }
+  .entry-date { font-size: 11px; color: var(--hint); font-family: var(--mono); }
+  .empty { text-align: center; padding: 24px; color: var(--hint); font-size: 13px; }
+  .empty i { font-size: 26px; display: block; margin-bottom: 8px; }
+
+  /* Mood */
+  .mood-row { display: flex; gap: 8px; margin-top: 4px; }
+  .moji { padding: 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: transparent; font-size: 22px; cursor: pointer; transition: all 0.15s; flex: 1; text-align: center; }
+  .moji:hover, .moji.on { border-color: var(--mood); background: rgba(139,132,247,0.12); }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 180px; width: 100%; }
+
+  /* Weather widget */
+  .wtemp { font-size: 42px; font-weight: 400; font-family: var(--mono); letter-spacing: -2px; line-height: 1; }
+  .wdesc { font-size: 13px; color: var(--muted); margin-top: 5px; }
+  .wmeta { display: flex; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--border); }
+  .wmeta-item { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+  .wicon { font-size: 38px; color: var(--muted); margin-right: 14px; }
+
+  /* Clock */
+  .clock-big { font-size: 42px; font-weight: 400; font-family: var(--mono); letter-spacing: -2px; line-height: 1; }
+  .clock-date { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  /* Agenda */
+  .evt { display: flex; align-items: center; gap: 10px; padding: 8px 11px; background: var(--bg3); border-radius: var(--radius-sm); }
+  .evt-time { font-size: 12px; color: var(--hint); font-family: var(--mono); min-width: 40px; }
+  .evt-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .evt-title { font-size: 13px; flex: 1; }
+  .evt-del { font-size: 14px; color: var(--hint); cursor: pointer; padding: 2px 5px; border: none; background: none; border-radius: 4px; }
+  .evt-del:hover { color: var(--blood); }
+  .add-row { display: flex; gap: 6px; margin-top: 10px; }
+  .add-row input { flex: 1; padding: 8px 11px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg3); color: var(--text); font-size: 13px; outline: none; font-family: var(--font); }
+  .add-row input[type=time] { flex: 0 0 90px; }
+  .add-row input:focus { border-color: rgba(255,255,255,0.22); }
+
+  /* Divider */
+  .div { height: 0.5px; background: var(--border); margin: 14px 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+  /* Range */
+  input[type=range] { accent-color: var(--mood); width: 100%; }
+
+  /* Responsive */
+  @media(max-width: 680px) {
+    .sidebar { width: 60px; padding: 18px 8px; }
+    .logo, .nav-item span, .nav-sep { display: none; }
+    .nav-item { justify-content: center; padding: 10px; }
+    .main { padding: 18px 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- Sidebar -->
+  <nav class="sidebar" role="navigation" aria-label="Main navigation">
+    <div class="logo">vita<span>.</span></div>
+    <button class="nav-item active" onclick="go('dashboard')" id="nb-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span><span class="dot" style="background:transparent;"></span></button>
+    <button class="nav-item" onclick="go('weight')" id="nb-weight"><i class="ti ti-scale"></i><span>Weight</span><span class="dot" style="background:#4a9eff;"></span></button>
+    <button class="nav-item" onclick="go('blood')" id="nb-blood"><i class="ti ti-droplet-half-2"></i><span>Labs</span><span class="dot" style="background:#e05555;"></span></button>
+    <button class="nav-item" onclick="go('mood')" id="nb-mood"><i class="ti ti-brain"></i><span>Mood</span><span class="dot" style="background:#8b84f7;"></span></button>
+    <button class="nav-item" onclick="go('meds')" id="nb-meds"><i class="ti ti-pill"></i><span>Meds</span><span class="dot" style="background:#2dbd8f;"></span></button>
+    <button class="nav-item" onclick="go('exercise')" id="nb-exercise"><i class="ti ti-run"></i><span>Exercise</span><span class="dot" style="background:#f5a623;"></span></button>
+    <button class="nav-item" onclick="go('sleep')" id="nb-sleep"><i class="ti ti-moon"></i><span>Sleep</span><span class="dot" style="background:#5ecfa8;"></span></button>
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">Good <span id="greeting-time">day</span> 👋</div>
+      <div class="g-dash" style="margin-bottom:14px;">
+        <!-- Clock -->
+        <div class="card">
+          <div class="sec"><i class="ti ti-clock"></i> Istanbul</div>
+          <div class="clock-big" id="clock">--:--</div>
+          <div class="clock-date" id="clock-date">--</div>
+        </div>
+        <!-- Weather -->
+        <div class="card">
+          <div class="sec"><i class="ti ti-cloud"></i> Weather</div>
+          <div id="weather-out"><span style="color:var(--hint);font-size:13px;">Loading…</span></div>
+        </div>
+        <!-- Quick stats -->
+        <div class="card" id="dash-stats-card">
+          <div class="sec"><i class="ti ti-activity"></i> Latest</div>
+          <div id="dash-quick"></div>
+        </div>
+      </div>
+
+      <!-- Agenda -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="sec"><i class="ti ti-calendar-event"></i> Today's agenda</div>
+        <div id="evt-list" style="display:flex;flex-direction:column;gap:5px;min-height:20px;margin-bottom:10px;"></div>
+        <div class="add-row">
+          <input type="time" id="evt-time" value="09:00">
+          <input type="text" id="evt-title" placeholder="Add an event…">
+          <button class="btn" style="padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;" onclick="addEvt()"><i class="ti ti-plus"></i></button>
+        </div>
+      </div>
+
+      <!-- Weight chart -->
+      <div class="g2">
+        <div class="card">
+          <div class="sec"><i class="ti ti-chart-line"></i> Weight trend</div>
+          <div class="chart-wrap"><canvas id="dash-wc"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="sec"><i class="ti ti-list"></i> Recent entries</div>
+          <div class="entry-list" id="dash-recent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WEIGHT -->
+    <div class="page" id="page-weight">
+      <div class="page-title"><span class="color-rule" style="background:var(--w);"></span>Weight</div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec">Log entry</div>
+          <div class="form">
+            <div><label>Weight (kg)</label><input type="number" id="w-val" placeholder="75.2" step="0.1"></div>
+            <div><label>Body fat % (optional)</label><input type="number" id="w-fat" placeholder="18.5" step="0.1"></div>
+            <div><label>Date</label><input type="date" id="w-date"></div>
+            <div><label>Notes</label><input type="text" id="w-note" placeholder="Morning weigh-in, post-workout…"></div>
+            <button class="btn" onclick="logWeight()">Save entry</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec">Progress</div>
+          <div class="g3" id="w-stats" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap"><canvas id="w-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="sec">History</div>
+        <div class="entry-list" id="w-list"></div>
+      </div>
+    </div>
+
+    <!-- LABS -->
+    <div class="page" id="page-blood">
+      <div class="page-title"><span class="color-rule" style="background:var(--blood);"></span>Labs</div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec">Log result</div>
+          <div class="form">
+            <div><label>Test</label>
+              <select id="b-test" onchange="document.getElementById('b-custom-wrap').style.display=this.value==='Custom'?'block':'none'">
+                <option value="">Select…</option>
+                <option>Blood glucose (mg/dL)</option><option>HbA1c (%)</option>
+                <option>LDL cholesterol (mg/dL)</option><option>HDL cholesterol (mg/dL)</option>
+                <option>Total cholesterol (mg/dL)</option><option>Triglycerides (mg/dL)</option>
+                <option>TSH (mIU/L)</option><option>Vitamin D (ng/mL)</option>
+                <option>Ferritin (ng/mL)</option><option>Hemoglobin (g/dL)</option>
+                <option>Custom</option>
+              </select>
+            </div>
+            <div id="b-custom-wrap" style="display:none;"><label>Custom name</label><input type="text" id="b-custom" placeholder="Name + unit"></div>
+            <div><label>Value</label><input type="number" id="b-val" step="any" placeholder="Numeric result"></div>
+            <div><label>Date</label><input type="date" id="b-date"></div>
+            <div><label>Notes</label><input type="text" id="b-note" placeholder="Fasting, lab name…"></div>
+            <button class="btn" onclick="logBlood()">Save result</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec">Latest per test</div>
+          <div id="b-latest" class="entry-list"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="sec">History</div>
+        <div class="entry-list" id="b-list"></div>
+      </div>
+    </div>
+
+    <!-- MOOD -->
+    <div class="page" id="page-mood">
+      <div class="page-title"><span class="color-rule" style="background:var(--mood);"></span>Mood</div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec">How are you feeling?</div>
+          <div class="form">
+            <div>
+              <label>Mood</label>
+              <div class="mood-row">
+                <button class="moji" onclick="pickMood(1)" id="m1">😞</button>
+                <button class="moji" onclick="pickMood(2)" id="m2">😕</button>
+                <button class="moji" onclick="pickMood(3)" id="m3">😐</button>
+                <button class="moji" onclick="pickMood(4)" id="m4">🙂</button>
+                <button class="moji" onclick="pickMood(5)" id="m5">😄</button>
+              </div>
+            </div>
+            <div><label>Energy <span id="m-e-out" style="color:var(--text);font-weight:500;">5</span>/10</label><input type="range" id="m-energy" min="1" max="10" value="5" oninput="document.getElementById('m-e-out').textContent=this.value"></div>
+            <div><label>Anxiety <span id="m-a-out" style="color:var(--text);font-weight:500;">3</span>/10</label><input type="range" id="m-anxiety" min="1" max="10" value="3" oninput="document.getElementById('m-a-out').textContent=this.value"></div>
+            <div><label>Date</label><input type="date" id="m-date"></div>
+            <div><label>Journal note</label><textarea id="m-note" rows="3" placeholder="What's on your mind…"></textarea></div>
+            <button class="btn" onclick="logMood()">Save entry</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec">Trend</div>
+          <div class="g3" id="m-stats" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap"><canvas id="m-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="sec">Journal</div>
+        <div class="entry-list" id="m-list"></div>
+      </div>
+    </div>
+
+    <!-- MEDS -->
+    <div class="page" id="page-meds">
+      <div class="page-title"><span class="color-rule" style="background:var(--meds);"></span>Medications</div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec">Add medication / supplement</div>
+          <div class="form">
+            <div><label>Name</label><input type="text" id="med-name" placeholder="Vitamin D3, Metformin…"></div>
+            <div><label>Dose</label><input type="text" id="med-dose" placeholder="2000 IU, 500mg…"></div>
+            <div><label>Frequency</label>
+              <select id="med-freq">
+                <option>Once daily</option><option>Twice daily</option><option>Three times daily</option>
+                <option>Weekly</option><option>As needed</option>
+              </select>
+            </div>
+            <div><label>Start date</label><input type="date" id="med-start"></div>
+            <div><label>Notes</label><input type="text" id="med-note" placeholder="With food, morning…"></div>
+            <button class="btn" onclick="logMed()">Add</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec">Active</div>
+          <div class="entry-list" id="med-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXERCISE -->
+    <div class="page" id="page-exercise">
+      <div class="page-title"><span class="color-rule" style="background:var(--ex);"></span>Exercise</div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec">Log workout</div>
+          <div class="form">
+            <div><label>Type</label>
+              <select id="ex-type">
+                <option>Running</option><option>Walking</option><option>Cycling</option><option>Swimming</option>
+                <option>Strength training</option><option>HIIT</option><option>Yoga</option><option>Other</option>
+              </select>
+            </div>
+            <div><label>Duration (min)</label><input type="number" id="ex-dur" placeholder="45"></div>
+            <div><label>Distance (km, optional)</label><input type="number" id="ex-dist" step="0.1" placeholder="5.2"></div>
+            <div><label>Calories burned (optional)</label><input type="number" id="ex-cal" placeholder="320"></div>
+            <div><label>Date</label><input type="date" id="ex-date"></div>
+            <div><label>Notes</label><input type="text" id="ex-note" placeholder="How did it feel?"></div>
+            <button class="btn" onclick="logEx()">Save workout</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec">Summary</div>
+          <div class="g3" id="ex-stats" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap"><canvas id="ex-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="sec">Workout log</div>
+        <div class="entry-list" id="ex-list"></div>
+      </div>
+    </div>
+
+    <!-- SLEEP -->
+    <div class="page" id="page-sleep">
+      <div class="page-title"><span class="color-rule" style="background:var(--sleep);"></span>Sleep</div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec">Log sleep</div>
+          <div class="form">
+            <div><label>Bedtime</label><input type="time" id="sl-bed" value="23:00"></div>
+            <div><label>Wake time</label><input type="time" id="sl-wake" value="07:00"></div>
+            <div>
+              <label>Quality</label>
+              <div class="mood-row">
+                <button class="moji" onclick="pickSleep(1)" id="sq1">😴</button>
+                <button class="moji" onclick="pickSleep(2)" id="sq2">😫</button>
+                <button class="moji" onclick="pickSleep(3)" id="sq3">😑</button>
+                <button class="moji" onclick="pickSleep(4)" id="sq4">😌</button>
+                <button class="moji" onclick="pickSleep(5)" id="sq5">🥳</button>
+              </div>
+            </div>
+            <div><label>Date (night of)</label><input type="date" id="sl-date"></div>
+            <div><label>Notes</label><input type="text" id="sl-note" placeholder="Caffeine, screen time…"></div>
+            <button class="btn" onclick="logSleep()">Save sleep</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec">Analysis</div>
+          <div class="g3" id="sl-stats" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap"><canvas id="sl-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="sec">Sleep log</div>
+        <div class="entry-list" id="sl-list"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─── Storage ────────────────────────────────────────────────────────────────
+const SK = { weight:'vita_weight', blood:'vita_blood', mood:'vita_mood', meds:'vita_meds', exercise:'vita_exercise', sleep:'vita_sleep', agenda:'vita_agenda' };
+function load(k){ try{ return JSON.parse(localStorage.getItem(SK[k])||'[]'); }catch(e){ return []; } }
+function save(k,d){ try{ localStorage.setItem(SK[k], JSON.stringify(d)); }catch(e){} }
+
+// ─── Nav ─────────────────────────────────────────────────────────────────────
+function go(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('nb-'+name).classList.add('active');
+  renders[name] && renders[name]();
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const td = () => new Date().toISOString().slice(0,10);
+const fmtD = d => { try{ return new Date(d+'T12:00:00').toLocaleDateString('tr-TR',{day:'numeric',month:'short',year:'2-digit'}); }catch(e){ return d; } };
+const pz = n => String(n).padStart(2,'0');
+function initDate(...ids){ ids.forEach(id=>{ const el=document.getElementById(id); if(el&&!el.value) el.value=td(); }); }
+const charts = {};
+function mkChart(id, type, labels, datasets, yMin){
+  if(charts[id]){ charts[id].destroy(); }
+  const ctx = document.getElementById(id); if(!ctx) return;
+  charts[id] = new Chart(ctx, {
+    type, data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ grid:{ color:'rgba(255,255,255,0.04)' }, ticks:{ color:'#4a4a58', font:{size:10}, maxTicksLimit:7 } },
+        y:{ grid:{ color:'rgba(255,255,255,0.04)' }, ticks:{ color:'#4a4a58', font:{size:10} }, ...(yMin!==undefined?{min:yMin}:{}) }
+      }
+    }
+  });
+}
+function metTile(label, val, sub=''){
+  return `<div class="card-sm"><div class="metric-label">${label}</div><div class="metric-val">${val}</div>${sub?`<div class="metric-change">${sub}</div>`:''}</div>`;
+}
+
+// ─── Clock ───────────────────────────────────────────────────────────────────
+function tickClock(){
+  const now = new Date();
+  const ist = new Date(now.toLocaleString('en-US',{timeZone:'Europe/Istanbul'}));
+  const h = ist.getHours();
+  document.getElementById('clock').textContent = pz(h)+':'+pz(ist.getMinutes());
+  const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('clock-date').textContent = days[ist.getDay()]+', '+ist.getDate()+' '+months[ist.getMonth()];
+  const greet = h<12?'morning':h<18?'afternoon':'evening';
+  document.getElementById('greeting-time').textContent = greet;
+}
+tickClock(); setInterval(tickClock, 1000);
+
+// ─── Weather ─────────────────────────────────────────────────────────────────
+const wIcon = c => { if(c===0)return'ti-sun'; if(c<=2)return'ti-cloud-sun'; if(c<=3)return'ti-cloud'; if(c<=49)return'ti-mist'; if(c<=59)return'ti-cloud-drizzle'; if(c<=69)return'ti-cloud-rain'; if(c<=79)return'ti-snowflake'; if(c<=82)return'ti-cloud-rain'; if(c<=86)return'ti-snowflake'; return'ti-cloud-storm'; };
+const wDesc = c => { if(c===0)return'Clear sky'; if(c===1)return'Mostly clear'; if(c===2)return'Partly cloudy'; if(c===3)return'Overcast'; if(c<=49)return'Foggy'; if(c<=59)return'Drizzle'; if(c<=69)return'Rain'; if(c<=79)return'Snow'; if(c<=82)return'Showers'; if(c<=86)return'Snow showers'; return'Thunderstorm'; };
+async function fetchWeather(){
+  try{
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=41.0082&longitude=28.9784&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,relativehumidity_2m&timezone=Europe/Istanbul');
+    const d = await r.json(); const c = d.current;
+    document.getElementById('weather-out').innerHTML = `
+      <div style="display:flex;align-items:center;">
+        <i class="ti ${wIcon(c.weathercode)} wicon"></i>
+        <div><div class="wtemp">${Math.round(c.temperature_2m)}°</div><div class="wdesc">${wDesc(c.weathercode)}</div></div>
+      </div>
+      <div class="wmeta">
+        <div class="wmeta-item"><i class="ti ti-thermometer"></i> Feels ${Math.round(c.apparent_temperature)}°</div>
+        <div class="wmeta-item"><i class="ti ti-wind"></i> ${Math.round(c.windspeed_10m)} km/h</div>
+        <div class="wmeta-item"><i class="ti ti-droplet"></i> ${Math.round(c.relativehumidity_2m)}%</div>
+      </div>`;
+  }catch(e){ document.getElementById('weather-out').innerHTML='<span style="color:var(--hint);font-size:13px;">Weather unavailable</span>'; }
+}
+fetchWeather(); setInterval(fetchWeather, 600000);
+
+// ─── Agenda ──────────────────────────────────────────────────────────────────
+const DOT_COLORS = ['#4a9eff','#e05555','#8b84f7','#2dbd8f','#f5a623','#5ecfa8','#d4537e'];
+let evts = load('agenda');
+function saveEvts(){ save('agenda', evts); }
+function renderEvts(){
+  const el = document.getElementById('evt-list');
+  if(!evts.length){ el.innerHTML='<div style="color:var(--hint);font-size:13px;padding:6px 0;">No events yet</div>'; return; }
+  const sorted = [...evts].sort((a,b)=>a.time.localeCompare(b.time));
+  el.innerHTML = sorted.map((e,i)=>`<div class="evt"><span class="evt-time">${e.time}</span><span class="evt-dot" style="background:${e.color};"></span><span class="evt-title">${e.title}</span><button class="evt-del" onclick="delEvt(${evts.indexOf(e)})"><i class="ti ti-x"></i></button></div>`).join('');
+}
+function addEvt(){
+  const time = document.getElementById('evt-time').value;
+  const title = document.getElementById('evt-title').value.trim();
+  if(!title) return;
+  evts.push({ time, title, color: DOT_COLORS[evts.length % DOT_COLORS.length] });
+  document.getElementById('evt-title').value='';
+  saveEvts(); renderEvts();
+}
+function delEvt(i){ evts.splice(i,1); saveEvts(); renderEvts(); }
+document.getElementById('evt-title').addEventListener('keydown',e=>{ if(e.key==='Enter') addEvt(); });
+renderEvts();
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+function renderDashboard(){
+  const W=load('weight'), M=load('mood'), S=load('sleep'), E=load('exercise');
+  // Quick stats
+  let q='';
+  if(W.length){ const last=W[W.length-1]; q+=`<div style="margin-bottom:6px;font-size:13px;"><span style="color:var(--hint);font-size:11px;">Weight</span><br><strong style="font-family:var(--mono);">${last.val.toFixed(1)} kg</strong></div>`; }
+  if(M.length){ const last=M[M.length-1]; const emojis=['','😞','😕','😐','🙂','😄']; q+=`<div style="margin-bottom:6px;font-size:13px;"><span style="color:var(--hint);font-size:11px;">Mood</span><br><strong>${emojis[last.mood]}</strong></div>`; }
+  if(S.length){ const last=S[S.length-1]; q+=`<div style="margin-bottom:6px;font-size:13px;"><span style="color:var(--hint);font-size:11px;">Sleep</span><br><strong style="font-family:var(--mono);">${last.hours.toFixed(1)} hrs</strong></div>`; }
+  document.getElementById('dash-quick').innerHTML = q || '<span style="color:var(--hint);font-size:13px;">Start logging to see stats</span>';
+  // Weight chart
+  if(W.length>1){
+    const labels=W.slice(-20).map(e=>fmtD(e.date)), vals=W.slice(-20).map(e=>e.val);
+    mkChart('dash-wc','line',labels,[{data:vals,borderColor:'#4a9eff',backgroundColor:'rgba(74,158,255,0.08)',borderWidth:2,pointRadius:2,tension:0.3,fill:true}],Math.min(...vals)-2);
+  } else {
+    const c=document.getElementById('dash-wc'); if(c) c.parentElement.innerHTML='<div class="empty"><i class="ti ti-chart-line"></i>Log 2+ weight entries to see trend</div>';
+  }
+  // Recent
+  const recent=[];
+  W.slice(-2).forEach(e=>recent.push({date:e.date,text:`Weight ${e.val.toFixed(1)} kg`,c:'var(--w)'}));
+  M.slice(-2).forEach(e=>{ const em=['','😞','😕','😐','🙂','😄']; recent.push({date:e.date,text:`Mood ${em[e.mood]}`,c:'var(--mood)'}); });
+  S.slice(-2).forEach(e=>recent.push({date:e.date,text:`Sleep ${e.hours.toFixed(1)} hrs`,c:'var(--sleep)'}));
+  E.slice(-2).forEach(e=>recent.push({date:e.date,text:`${e.type} ${e.dur} min`,c:'var(--ex)'}));
+  recent.sort((a,b)=>b.date.localeCompare(a.date));
+  const rel=document.getElementById('dash-recent');
+  rel.innerHTML = recent.length ? recent.slice(0,8).map(r=>`<div class="entry"><span style="display:flex;align-items:center;gap:8px;"><span style="width:6px;height:6px;border-radius:50%;background:${r.c};flex-shrink:0;display:inline-block;"></span>${r.text}</span><span class="entry-date">${fmtD(r.date)}</span></div>`).join('') : '<div class="empty"><i class="ti ti-notes"></i>No entries yet</div>';
+}
+
+// ─── Weight ──────────────────────────────────────────────────────────────────
+function logWeight(){
+  const val=parseFloat(document.getElementById('w-val').value);
+  if(!val||val<20||val>300){ alert('Enter a valid weight (20–300 kg)'); return; }
+  const fat=parseFloat(document.getElementById('w-fat').value)||null;
+  const date=document.getElementById('w-date').value||td();
+  const note=document.getElementById('w-note').value;
+  const data=load('weight');
+  data.push({val,fat,date,note}); data.sort((a,b)=>a.date.localeCompare(b.date));
+  save('weight',data);
+  ['w-val','w-fat','w-note'].forEach(id=>document.getElementById(id).value='');
+  renderWeight();
+}
+function renderWeight(){
+  initDate('w-date');
+  const data=load('weight');
+  document.getElementById('w-list').innerHTML = data.length
+    ? data.slice().reverse().slice(0,20).map(e=>`<div class="entry"><span>${e.val.toFixed(1)} kg${e.fat?' · '+e.fat+'% fat':''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
+    : '<div class="empty"><i class="ti ti-scale"></i>No entries yet</div>';
+  if(data.length){
+    const vals=data.map(e=>e.val), first=vals[0], last=vals[vals.length-1];
+    const diff=(last-first).toFixed(1);
+    document.getElementById('w-stats').innerHTML = metTile('Current',last.toFixed(1)+' kg')+metTile('Change',(diff>0?'+':'')+diff+' kg')+metTile('Entries',data.length);
+    const labels=data.slice(-30).map(e=>fmtD(e.date)), v=data.slice(-30).map(e=>e.val);
+    mkChart('w-chart','line',labels,[{data:v,borderColor:'#4a9eff',backgroundColor:'rgba(74,158,255,0.1)',borderWidth:2,pointRadius:3,tension:0.3,fill:true}],Math.min(...v)-2);
+  }
+}
+
+// ─── Blood / Labs ─────────────────────────────────────────────────────────────
+function logBlood(){
+  let test=document.getElementById('b-test').value;
+  if(test==='Custom') test=document.getElementById('b-custom').value;
+  if(!test){ alert('Select or enter a test name'); return; }
+  const val=parseFloat(document.getElementById('b-val').value);
+  if(isNaN(val)){ alert('Enter a numeric value'); return; }
+  const date=document.getElementById('b-date').value||td();
+  const note=document.getElementById('b-note').value;
+  const data=load('blood');
+  data.push({test,val,date,note}); data.sort((a,b)=>a.date.localeCompare(b.date));
+  save('blood',data);
+  ['b-val','b-note'].forEach(id=>document.getElementById(id).value='');
+  renderBlood();
+}
+function renderBlood(){
+  initDate('b-date');
+  const data=load('blood');
+  document.getElementById('b-list').innerHTML = data.length
+    ? data.slice().reverse().slice(0,20).map(e=>`<div class="entry"><span><strong style="font-weight:500;">${e.test}</strong>: ${e.val}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
+    : '<div class="empty"><i class="ti ti-droplet-half-2"></i>No results yet</div>';
+  if(!data.length){ document.getElementById('b-latest').innerHTML='<div class="empty"><i class="ti ti-test-pipe"></i>No results yet</div>'; return; }
+  const byTest={};
+  data.forEach(e=>{ if(!byTest[e.test]||e.date>byTest[e.test].date) byTest[e.test]=e; });
+  document.getElementById('b-latest').innerHTML = Object.values(byTest).map(e=>`<div class="entry"><span style="color:var(--muted);font-size:12px;">${e.test}</span><span style="font-family:var(--mono);font-weight:500;">${e.val} <span style="font-size:11px;color:var(--hint);">${fmtD(e.date)}</span></span></div>`).join('');
+}
+
+// ─── Mood ─────────────────────────────────────────────────────────────────────
+let selMood=null, selSleep=null;
+function pickMood(v){ selMood=v; [1,2,3,4,5].forEach(i=>document.getElementById('m'+i).classList.toggle('on',i===v)); }
+function logMood(){
+  if(!selMood){ alert('Select a mood'); return; }
+  const energy=parseInt(document.getElementById('m-energy').value);
+  const anxiety=parseInt(document.getElementById('m-anxiety').value);
+  const date=document.getElementById('m-date').value||td();
+  const note=document.getElementById('m-note').value;
+  const data=load('mood');
+  data.push({mood:selMood,energy,anxiety,date,note}); data.sort((a,b)=>a.date.localeCompare(b.date));
+  save('mood',data);
+  selMood=null; [1,2,3,4,5].forEach(i=>document.getElementById('m'+i).classList.remove('on'));
+  document.getElementById('m-note').value='';
+  renderMood();
+}
+function renderMood(){
+  initDate('m-date');
+  const data=load('mood');
+  const em=['','😞','😕','😐','🙂','😄'];
+  document.getElementById('m-list').innerHTML = data.length
+    ? data.slice().reverse().slice(0,20).map(e=>`<div class="entry"><span>${em[e.mood]} mood ${e.mood}/5 · ⚡${e.energy} · 😰${e.anxiety}${e.note?' — '+e.note:''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
+    : '<div class="empty"><i class="ti ti-brain"></i>No entries yet</div>';
+  if(data.length){
+    const avg=(data.reduce((a,b)=>a+b.mood,0)/data.length).toFixed(1);
+    const avgE=(data.reduce((a,b)=>a+b.energy,0)/data.length).toFixed(1);
+    document.getElementById('m-stats').innerHTML = metTile('Avg mood',avg+'/5')+metTile('Avg energy',avgE+'/10')+metTile('Entries',data.length);
+    const labels=data.slice(-30).map(e=>fmtD(e.date));
+    mkChart('m-chart','line',labels,[{data:data.slice(-30).map(e=>e.mood),borderColor:'#8b84f7',backgroundColor:'rgba(139,132,247,0.1)',borderWidth:2,pointRadius:3,tension:0.3,fill:true}],0);
+  }
+}
+
+// ─── Meds ─────────────────────────────────────────────────────────────────────
+function logMed(){
+  const name=document.getElementById('med-name').value.trim();
+  if(!name){ alert('Enter a name'); return; }
+  const dose=document.getElementById('med-dose').value.trim();
+  const freq=document.getElementById('med-freq').value;
+  const start=document.getElementById('med-start').value||td();
+  const note=document.getElementById('med-note').value;
+  const data=load('meds');
+  data.push({name,dose,freq,start,note});
+  save('meds',data);
+  ['med-name','med-dose','med-note'].forEach(id=>document.getElementById(id).value='');
+  renderMeds();
+}
+function delMed(i){ const data=load('meds'); data.splice(i,1); save('meds',data); renderMeds(); }
+function renderMeds(){
+  initDate('med-start');
+  const data=load('meds');
+  document.getElementById('med-list').innerHTML = data.length
+    ? data.map((e,i)=>`<div class="entry"><div><div style="font-weight:500;">${e.name}</div><div style="font-size:11px;color:var(--hint);">${e.dose} · ${e.freq} · from ${fmtD(e.start)}${e.note?' · '+e.note:''}</div></div><button class="btn-ghost" onclick="delMed(${i})"><i class="ti ti-trash"></i></button></div>`).join('')
+    : '<div class="empty"><i class="ti ti-pill"></i>No medications added</div>';
+}
+
+// ─── Exercise ─────────────────────────────────────────────────────────────────
+function logEx(){
+  const type=document.getElementById('ex-type').value;
+  const dur=parseInt(document.getElementById('ex-dur').value);
+  if(!dur||dur<1){ alert('Enter duration'); return; }
+  const dist=parseFloat(document.getElementById('ex-dist').value)||null;
+  const cal=parseInt(document.getElementById('ex-cal').value)||null;
+  const date=document.getElementById('ex-date').value||td();
+  const note=document.getElementById('ex-note').value;
+  const data=load('exercise');
+  data.push({type,dur,dist,cal,date,note}); data.sort((a,b)=>a.date.localeCompare(b.date));
+  save('exercise',data);
+  ['ex-dur','ex-dist','ex-cal','ex-note'].forEach(id=>document.getElementById(id).value='');
+  renderEx();
+}
+function renderEx(){
+  initDate('ex-date');
+  const data=load('exercise');
+  document.getElementById('ex-list').innerHTML = data.length
+    ? data.slice().reverse().slice(0,20).map(e=>`<div class="entry"><span><strong style="font-weight:500;">${e.type}</strong> · ${e.dur} min${e.dist?' · '+e.dist+' km':''}${e.cal?' · ~'+e.cal+' kcal':''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
+    : '<div class="empty"><i class="ti ti-run"></i>No workouts yet</div>';
+  if(data.length){
+    const l30=data.filter(e=>e.date>=new Date(Date.now()-30*86400000).toISOString().slice(0,10));
+    const totMin=l30.reduce((a,b)=>a+b.dur,0);
+    const totCal=l30.reduce((a,b)=>a+(b.cal||0),0);
+    document.getElementById('ex-stats').innerHTML = metTile('Workouts (30d)',l30.length)+metTile('Minutes (30d)',totMin)+(totCal?metTile('Calories (30d)',totCal+'kcal'):'');
+    const labels=data.slice(-20).map(e=>fmtD(e.date));
+    mkChart('ex-chart','bar',labels,[{data:data.slice(-20).map(e=>e.dur),backgroundColor:'rgba(245,166,35,0.7)',borderColor:'#f5a623',borderWidth:1}]);
+  }
+}
+
+// ─── Sleep ────────────────────────────────────────────────────────────────────
+function pickSleep(v){ selSleep=v; [1,2,3,4,5].forEach(i=>document.getElementById('sq'+i).classList.toggle('on',i===v)); }
+function calcHours(bed,wake){ const [bh,bm]=bed.split(':').map(Number),[wh,wm]=wake.split(':').map(Number); let m=(wh*60+wm)-(bh*60+bm); if(m<0)m+=1440; return parseFloat((m/60).toFixed(2)); }
+function logSleep(){
+  const bed=document.getElementById('sl-bed').value, wake=document.getElementById('sl-wake').value;
+  if(!bed||!wake){ alert('Enter bedtime and wake time'); return; }
+  const hours=calcHours(bed,wake), quality=selSleep||3;
+  const date=document.getElementById('sl-date').value||td();
+  const note=document.getElementById('sl-note').value;
+  const data=load('sleep');
+  data.push({bed,wake,hours,quality,date,note}); data.sort((a,b)=>a.date.localeCompare(b.date));
+  save('sleep',data);
+  selSleep=null; [1,2,3,4,5].forEach(i=>document.getElementById('sq'+i).classList.remove('on'));
+  document.getElementById('sl-note').value='';
+  renderSleep();
+}
+function renderSleep(){
+  initDate('sl-date');
+  const data=load('sleep');
+  const qe=['','😴','😫','😑','😌','🥳'];
+  document.getElementById('sl-list').innerHTML = data.length
+    ? data.slice().reverse().slice(0,20).map(e=>`<div class="entry"><span>${e.hours.toFixed(1)} hrs · ${e.bed}–${e.wake} · ${qe[e.quality]}${e.note?' · '+e.note:''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
+    : '<div class="empty"><i class="ti ti-moon"></i>No sleep entries yet</div>';
+  if(data.length){
+    const avg=(data.reduce((a,b)=>a+b.hours,0)/data.length).toFixed(1);
+    const l7=data.slice(-7), avg7=l7.length?(l7.reduce((a,b)=>a+b.hours,0)/l7.length).toFixed(1):avg;
+    const avgQ=(data.reduce((a,b)=>a+b.quality,0)/data.length).toFixed(1);
+    document.getElementById('sl-stats').innerHTML = metTile('Avg sleep',avg7+' hrs')+metTile('Quality',avgQ+'/5')+metTile('Entries',data.length);
+    const labels=data.slice(-20).map(e=>fmtD(e.date));
+    mkChart('sl-chart','bar',labels,[{data:data.slice(-20).map(e=>parseFloat(e.hours.toFixed(1))),backgroundColor:'rgba(94,207,168,0.7)',borderColor:'#5ecfa8',borderWidth:1}],0);
+  }
+}
+
+// ─── Render map ───────────────────────────────────────────────────────────────
+const renders = {
+  dashboard: renderDashboard,
+  weight: renderWeight,
+  blood: renderBlood,
+  mood: renderMood,
+  meds: renderMeds,
+  exercise: renderEx,
+  sleep: renderSleep
+};
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+renderDashboard();
+</script>
+</body>
+</html>
