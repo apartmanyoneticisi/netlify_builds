@@ -4,432 +4,147 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vita — Personal Health Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyALNtcw8XitXtT6e5CSxYvFjsD6aVzHSGk",
-  authDomain: "vita-health-7b9c2.firebaseapp.com",
-  projectId: "vita-health-7b9c2",
-  storageBucket: "vita-health-7b9c2.firebasestorage.app",
-  messagingSenderId: "176682806540",
-  appId: "1:176682806540:web:1f4e38a0caee0d5ff76d29",
-  measurementId: "G-0FDE3H9FDS"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-// ─── DB helpers ──────────────────────────────────────────────────────────────
-async function dbAdd(col, data) {
-  await addDoc(collection(db, col), { ...data, _ts: Date.now() });
-}
-async function dbAll(col) {
-  const q = query(collection(db, col), orderBy('date', 'asc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ _id: d.id, ...d.data() }));
-}
-async function dbDel(col, id) {
-  await deleteDoc(doc(db, col, id));
-}
-
-// ─── Nav ─────────────────────────────────────────────────────────────────────
-function go(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  document.getElementById('nb-' + name).classList.add('active');
-  renders[name] && renders[name]();
-}
-window.go = go;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-const td = () => new Date().toISOString().slice(0, 10);
-const fmtD = d => { try { return new Date(d + 'T12:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: '2-digit' }); } catch (e) { return d; } };
-const pz = n => String(n).padStart(2, '0');
-function initDate(...ids) { ids.forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = td(); }); }
-const charts = {};
-function mkChart(id, type, labels, datasets, yMin) {
-  if (charts[id]) { charts[id].destroy(); }
-  const ctx = document.getElementById(id); if (!ctx) return;
-  charts[id] = new Chart(ctx, {
-    type, data: { labels, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#4a4a58', font: { size: 10 }, maxTicksLimit: 7 } },
-        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#4a4a58', font: { size: 10 } }, ...(yMin !== undefined ? { min: yMin } : {}) }
-      }
-    }
-  });
-}
-function metTile(label, val, sub = '') {
-  return `<div class="card-sm"><div class="metric-label">${label}</div><div class="metric-val">${val}</div>${sub ? `<div class="metric-change">${sub}</div>` : ''}</div>`;
-}
-function setLoading(id, msg = 'Loading…') { const el = document.getElementById(id); if (el) el.innerHTML = `<div class="empty"><i class="ti ti-loader-2" style="animation:spin 1s linear infinite;display:block;font-size:22px;margin-bottom:6px;"></i>${msg}</div>`; }
-
-// ─── Clock ───────────────────────────────────────────────────────────────────
-function tickClock() {
-  const ist = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-  const h = ist.getHours();
-  document.getElementById('clock').textContent = pz(h) + ':' + pz(ist.getMinutes());
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  document.getElementById('clock-date').textContent = days[ist.getDay()] + ', ' + ist.getDate() + ' ' + months[ist.getMonth()];
-  document.getElementById('greeting-time').textContent = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
-}
-tickClock(); setInterval(tickClock, 1000);
-
-// ─── Weather ─────────────────────────────────────────────────────────────────
-const wIcon = c => { if (c === 0) return 'ti-sun'; if (c <= 2) return 'ti-cloud-sun'; if (c <= 3) return 'ti-cloud'; if (c <= 49) return 'ti-mist'; if (c <= 59) return 'ti-cloud-drizzle'; if (c <= 69) return 'ti-cloud-rain'; if (c <= 79) return 'ti-snowflake'; if (c <= 82) return 'ti-cloud-rain'; if (c <= 86) return 'ti-snowflake'; return 'ti-cloud-storm'; };
-const wDesc = c => { if (c === 0) return 'Clear sky'; if (c === 1) return 'Mostly clear'; if (c === 2) return 'Partly cloudy'; if (c === 3) return 'Overcast'; if (c <= 49) return 'Foggy'; if (c <= 59) return 'Drizzle'; if (c <= 69) return 'Rain'; if (c <= 79) return 'Snow'; if (c <= 82) return 'Showers'; if (c <= 86) return 'Snow showers'; return 'Thunderstorm'; };
-async function fetchWeather() {
-  try {
-    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=41.0082&longitude=28.9784&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,relativehumidity_2m&timezone=Europe/Istanbul');
-    const d = await r.json(); const c = d.current;
-    document.getElementById('weather-out').innerHTML = `
-      <div style="display:flex;align-items:center;">
-        <i class="ti ${wIcon(c.weathercode)} wicon"></i>
-        <div><div class="wtemp">${Math.round(c.temperature_2m)}°</div><div class="wdesc">${wDesc(c.weathercode)}</div></div>
-      </div>
-      <div class="wmeta">
-        <div class="wmeta-item"><i class="ti ti-thermometer"></i> Feels ${Math.round(c.apparent_temperature)}°</div>
-        <div class="wmeta-item"><i class="ti ti-wind"></i> ${Math.round(c.windspeed_10m)} km/h</div>
-        <div class="wmeta-item"><i class="ti ti-droplet"></i> ${Math.round(c.relativehumidity_2m)}%</div>
-      </div>`;
-  } catch (e) { document.getElementById('weather-out').innerHTML = '<span style="color:var(--hint);font-size:13px;">Weather unavailable</span>'; }
-}
-fetchWeather(); setInterval(fetchWeather, 600000);
-
-// ─── Agenda (Firestore) ───────────────────────────────────────────────────────
-const DOT_COLORS = ['#4a9eff', '#e05555', '#8b84f7', '#2dbd8f', '#f5a623', '#5ecfa8', '#d4537e'];
-async function renderEvts() {
-  const evts = await dbAll('agenda');
-  const el = document.getElementById('evt-list');
-  if (!evts.length) { el.innerHTML = '<div style="color:var(--hint);font-size:13px;padding:6px 0;">No events yet</div>'; return; }
-  const sorted = [...evts].sort((a, b) => a.time.localeCompare(b.time));
-  el.innerHTML = sorted.map(e => `<div class="evt"><span class="evt-time">${e.time}</span><span class="evt-dot" style="background:${e.color};"></span><span class="evt-title">${e.title}</span><button class="evt-del" onclick="delEvt('${e._id}')"><i class="ti ti-x"></i></button></div>`).join('');
-}
-window.delEvt = async (id) => { await dbDel('agenda', id); renderEvts(); };
-window.addEvt = async () => {
-  const time = document.getElementById('evt-time').value;
-  const title = document.getElementById('evt-title').value.trim();
-  if (!title) return;
-  const color = DOT_COLORS[Math.floor(Math.random() * DOT_COLORS.length)];
-  await dbAdd('agenda', { time, title, color, date: td() });
-  document.getElementById('evt-title').value = '';
-  renderEvts();
-};
-document.getElementById('evt-title').addEventListener('keydown', e => { if (e.key === 'Enter') window.addEvt(); });
-
-// ─── Dashboard ───────────────────────────────────────────────────────────────
-async function renderDashboard() {
-  renderEvts();
-  const [W, M, S, E] = await Promise.all([dbAll('weight'), dbAll('mood'), dbAll('sleep'), dbAll('exercise')]);
-  let q = '';
-  if (W.length) { const last = W[W.length - 1]; q += `<div style="margin-bottom:8px;"><span style="color:var(--hint);font-size:11px;">Weight</span><br><strong style="font-family:var(--mono);">${parseFloat(last.val).toFixed(1)} kg</strong></div>`; }
-  if (M.length) { const last = M[M.length - 1]; const em = ['', '😞', '😕', '😐', '🙂', '😄']; q += `<div style="margin-bottom:8px;"><span style="color:var(--hint);font-size:11px;">Mood</span><br><strong>${em[last.mood]}</strong></div>`; }
-  if (S.length) { const last = S[S.length - 1]; q += `<div style="margin-bottom:8px;"><span style="color:var(--hint);font-size:11px;">Sleep</span><br><strong style="font-family:var(--mono);">${parseFloat(last.hours).toFixed(1)} hrs</strong></div>`; }
-  document.getElementById('dash-quick').innerHTML = q || '<span style="color:var(--hint);font-size:13px;">Start logging to see stats</span>';
-
-  if (W.length > 1) {
-    const labels = W.slice(-20).map(e => fmtD(e.date)), vals = W.slice(-20).map(e => parseFloat(e.val));
-    mkChart('dash-wc', 'line', labels, [{ data: vals, borderColor: '#4a9eff', backgroundColor: 'rgba(74,158,255,0.08)', borderWidth: 2, pointRadius: 2, tension: 0.3, fill: true }], Math.min(...vals) - 2);
-  } else {
-    const c = document.getElementById('dash-wc'); if (c) c.parentElement.innerHTML = '<div class="empty"><i class="ti ti-chart-line"></i>Log 2+ weight entries to see trend</div>';
-  }
-
-  const recent = [];
-  W.slice(-2).forEach(e => recent.push({ date: e.date, text: `Weight ${parseFloat(e.val).toFixed(1)} kg`, c: 'var(--w)' }));
-  M.slice(-2).forEach(e => { const em = ['', '😞', '😕', '😐', '🙂', '😄']; recent.push({ date: e.date, text: `Mood ${em[e.mood]}`, c: 'var(--mood)' }); });
-  S.slice(-2).forEach(e => recent.push({ date: e.date, text: `Sleep ${parseFloat(e.hours).toFixed(1)} hrs`, c: 'var(--sleep)' }));
-  E.slice(-2).forEach(e => recent.push({ date: e.date, text: `${e.type} ${e.dur} min`, c: 'var(--ex)' }));
-  recent.sort((a, b) => b.date.localeCompare(a.date));
-  const rel = document.getElementById('dash-recent');
-  rel.innerHTML = recent.length ? recent.slice(0, 8).map(r => `<div class="entry"><span style="display:flex;align-items:center;gap:8px;"><span style="width:6px;height:6px;border-radius:50%;background:${r.c};flex-shrink:0;display:inline-block;"></span>${r.text}</span><span class="entry-date">${fmtD(r.date)}</span></div>`).join('') : '<div class="empty"><i class="ti ti-notes"></i>No entries yet</div>';
-}
-
-// ─── Weight ──────────────────────────────────────────────────────────────────
-window.logWeight = async () => {
-  const val = parseFloat(document.getElementById('w-val').value);
-  if (!val || val < 20 || val > 300) { alert('Enter a valid weight (20–300 kg)'); return; }
-  const fat = parseFloat(document.getElementById('w-fat').value) || null;
-  const date = document.getElementById('w-date').value || td();
-  const note = document.getElementById('w-note').value;
-  await dbAdd('weight', { val, fat, date, note });
-  ['w-val', 'w-fat', 'w-note'].forEach(id => document.getElementById(id).value = '');
-  renderWeight();
-};
-async function renderWeight() {
-  initDate('w-date');
-  setLoading('w-list'); setLoading('w-stats');
-  const data = await dbAll('weight');
-  document.getElementById('w-list').innerHTML = data.length
-    ? data.slice().reverse().slice(0, 20).map(e => `<div class="entry"><span>${parseFloat(e.val).toFixed(1)} kg${e.fat ? ' · ' + e.fat + '% fat' : ''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
-    : '<div class="empty"><i class="ti ti-scale"></i>No entries yet</div>';
-  if (data.length) {
-    const vals = data.map(e => parseFloat(e.val)), first = vals[0], last = vals[vals.length - 1];
-    const diff = (last - first).toFixed(1);
-    document.getElementById('w-stats').innerHTML = metTile('Current', last.toFixed(1) + ' kg') + metTile('Change', (diff > 0 ? '+' : '') + diff + ' kg') + metTile('Entries', data.length);
-    const labels = data.slice(-30).map(e => fmtD(e.date)), v = data.slice(-30).map(e => parseFloat(e.val));
-    mkChart('w-chart', 'line', labels, [{ data: v, borderColor: '#4a9eff', backgroundColor: 'rgba(74,158,255,0.1)', borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true }], Math.min(...v) - 2);
-  } else { document.getElementById('w-stats').innerHTML = ''; }
-}
-
-// ─── Labs ─────────────────────────────────────────────────────────────────────
-window.logBlood = async () => {
-  let test = document.getElementById('b-test').value;
-  if (test === 'Custom') test = document.getElementById('b-custom').value;
-  if (!test) { alert('Select or enter a test name'); return; }
-  const val = parseFloat(document.getElementById('b-val').value);
-  if (isNaN(val)) { alert('Enter a numeric value'); return; }
-  const date = document.getElementById('b-date').value || td();
-  const note = document.getElementById('b-note').value;
-  await dbAdd('blood', { test, val, date, note });
-  ['b-val', 'b-note'].forEach(id => document.getElementById(id).value = '');
-  renderBlood();
-};
-async function renderBlood() {
-  initDate('b-date');
-  setLoading('b-list'); setLoading('b-latest');
-  const data = await dbAll('blood');
-  document.getElementById('b-list').innerHTML = data.length
-    ? data.slice().reverse().slice(0, 20).map(e => `<div class="entry"><span><strong style="font-weight:500;">${e.test}</strong>: ${e.val}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
-    : '<div class="empty"><i class="ti ti-droplet-half-2"></i>No results yet</div>';
-  if (!data.length) { document.getElementById('b-latest').innerHTML = '<div class="empty"><i class="ti ti-test-pipe"></i>No results yet</div>'; return; }
-  const byTest = {};
-  data.forEach(e => { if (!byTest[e.test] || e.date > byTest[e.test].date) byTest[e.test] = e; });
-  document.getElementById('b-latest').innerHTML = Object.values(byTest).map(e => `<div class="entry"><span style="color:var(--muted);font-size:12px;">${e.test}</span><span style="font-family:var(--mono);font-weight:500;">${e.val} <span style="font-size:11px;color:var(--hint);">${fmtD(e.date)}</span></span></div>`).join('');
-}
-
-// ─── Mood ─────────────────────────────────────────────────────────────────────
-let selMood = null, selSleep = null;
-window.pickMood = v => { selMood = v; [1, 2, 3, 4, 5].forEach(i => document.getElementById('m' + i).classList.toggle('on', i === v)); };
-window.logMood = async () => {
-  if (!selMood) { alert('Select a mood'); return; }
-  const energy = parseInt(document.getElementById('m-energy').value);
-  const anxiety = parseInt(document.getElementById('m-anxiety').value);
-  const date = document.getElementById('m-date').value || td();
-  const note = document.getElementById('m-note').value;
-  await dbAdd('mood', { mood: selMood, energy, anxiety, date, note });
-  selMood = null; [1, 2, 3, 4, 5].forEach(i => document.getElementById('m' + i).classList.remove('on'));
-  document.getElementById('m-note').value = '';
-  renderMood();
-};
-async function renderMood() {
-  initDate('m-date');
-  setLoading('m-list'); setLoading('m-stats');
-  const data = await dbAll('mood');
-  const em = ['', '😞', '😕', '😐', '🙂', '😄'];
-  document.getElementById('m-list').innerHTML = data.length
-    ? data.slice().reverse().slice(0, 20).map(e => `<div class="entry"><span>${em[e.mood]} mood ${e.mood}/5 · ⚡${e.energy} · 😰${e.anxiety}${e.note ? ' — ' + e.note : ''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
-    : '<div class="empty"><i class="ti ti-brain"></i>No entries yet</div>';
-  if (data.length) {
-    const avg = (data.reduce((a, b) => a + b.mood, 0) / data.length).toFixed(1);
-    const avgE = (data.reduce((a, b) => a + b.energy, 0) / data.length).toFixed(1);
-    document.getElementById('m-stats').innerHTML = metTile('Avg mood', avg + '/5') + metTile('Avg energy', avgE + '/10') + metTile('Entries', data.length);
-    const labels = data.slice(-30).map(e => fmtD(e.date));
-    mkChart('m-chart', 'line', labels, [{ data: data.slice(-30).map(e => e.mood), borderColor: '#8b84f7', backgroundColor: 'rgba(139,132,247,0.1)', borderWidth: 2, pointRadius: 3, tension: 0.3, fill: true }], 0);
-  } else { document.getElementById('m-stats').innerHTML = ''; }
-}
-
-// ─── Meds ─────────────────────────────────────────────────────────────────────
-window.logMed = async () => {
-  const name = document.getElementById('med-name').value.trim();
-  if (!name) { alert('Enter a name'); return; }
-  const dose = document.getElementById('med-dose').value.trim();
-  const freq = document.getElementById('med-freq').value;
-  const start = document.getElementById('med-start').value || td();
-  const note = document.getElementById('med-note').value;
-  await dbAdd('meds', { name, dose, freq, start, date: start, note });
-  ['med-name', 'med-dose', 'med-note'].forEach(id => document.getElementById(id).value = '');
-  renderMeds();
-};
-window.delMed = async (id) => { await dbDel('meds', id); renderMeds(); };
-async function renderMeds() {
-  initDate('med-start');
-  setLoading('med-list');
-  const data = await dbAll('meds');
-  document.getElementById('med-list').innerHTML = data.length
-    ? data.map(e => `<div class="entry"><div><div style="font-weight:500;">${e.name}</div><div style="font-size:11px;color:var(--hint);">${e.dose} · ${e.freq} · from ${fmtD(e.start)}${e.note ? ' · ' + e.note : ''}</div></div><button class="btn-ghost" onclick="delMed('${e._id}')"><i class="ti ti-trash"></i></button></div>`).join('')
-    : '<div class="empty"><i class="ti ti-pill"></i>No medications added</div>';
-}
-
-// ─── Exercise ─────────────────────────────────────────────────────────────────
-window.logEx = async () => {
-  const type = document.getElementById('ex-type').value;
-  const dur = parseInt(document.getElementById('ex-dur').value);
-  if (!dur || dur < 1) { alert('Enter duration'); return; }
-  const dist = parseFloat(document.getElementById('ex-dist').value) || null;
-  const cal = parseInt(document.getElementById('ex-cal').value) || null;
-  const date = document.getElementById('ex-date').value || td();
-  const note = document.getElementById('ex-note').value;
-  await dbAdd('exercise', { type, dur, dist, cal, date, note });
-  ['ex-dur', 'ex-dist', 'ex-cal', 'ex-note'].forEach(id => document.getElementById(id).value = '');
-  renderEx();
-};
-async function renderEx() {
-  initDate('ex-date');
-  setLoading('ex-list'); setLoading('ex-stats');
-  const data = await dbAll('exercise');
-  document.getElementById('ex-list').innerHTML = data.length
-    ? data.slice().reverse().slice(0, 20).map(e => `<div class="entry"><span><strong style="font-weight:500;">${e.type}</strong> · ${e.dur} min${e.dist ? ' · ' + e.dist + ' km' : ''}${e.cal ? ' · ~' + e.cal + ' kcal' : ''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
-    : '<div class="empty"><i class="ti ti-run"></i>No workouts yet</div>';
-  if (data.length) {
-    const l30 = data.filter(e => e.date >= new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
-    const totMin = l30.reduce((a, b) => a + b.dur, 0);
-    const totCal = l30.reduce((a, b) => a + (b.cal || 0), 0);
-    document.getElementById('ex-stats').innerHTML = metTile('Workouts (30d)', l30.length) + metTile('Minutes (30d)', totMin) + (totCal ? metTile('Calories (30d)', totCal + ' kcal') : '');
-    const labels = data.slice(-20).map(e => fmtD(e.date));
-    mkChart('ex-chart', 'bar', labels, [{ data: data.slice(-20).map(e => e.dur), backgroundColor: 'rgba(245,166,35,0.7)', borderColor: '#f5a623', borderWidth: 1 }]);
-  } else { document.getElementById('ex-stats').innerHTML = ''; }
-}
-
-// ─── Sleep ────────────────────────────────────────────────────────────────────
-window.pickSleep = v => { selSleep = v; [1, 2, 3, 4, 5].forEach(i => document.getElementById('sq' + i).classList.toggle('on', i === v)); };
-function calcHours(bed, wake) { const [bh, bm] = bed.split(':').map(Number), [wh, wm] = wake.split(':').map(Number); let m = (wh * 60 + wm) - (bh * 60 + bm); if (m < 0) m += 1440; return parseFloat((m / 60).toFixed(2)); }
-window.logSleep = async () => {
-  const bed = document.getElementById('sl-bed').value, wake = document.getElementById('sl-wake').value;
-  if (!bed || !wake) { alert('Enter bedtime and wake time'); return; }
-  const hours = calcHours(bed, wake), quality = selSleep || 3;
-  const date = document.getElementById('sl-date').value || td();
-  const note = document.getElementById('sl-note').value;
-  await dbAdd('sleep', { bed, wake, hours, quality, date, note });
-  selSleep = null; [1, 2, 3, 4, 5].forEach(i => document.getElementById('sq' + i).classList.remove('on'));
-  document.getElementById('sl-note').value = '';
-  renderSleep();
-};
-async function renderSleep() {
-  initDate('sl-date');
-  setLoading('sl-list'); setLoading('sl-stats');
-  const data = await dbAll('sleep');
-  const qe = ['', '😴', '😫', '😑', '😌', '🥳'];
-  document.getElementById('sl-list').innerHTML = data.length
-    ? data.slice().reverse().slice(0, 20).map(e => `<div class="entry"><span>${parseFloat(e.hours).toFixed(1)} hrs · ${e.bed}–${e.wake} · ${qe[e.quality]}${e.note ? ' · ' + e.note : ''}</span><span class="entry-date">${fmtD(e.date)}</span></div>`).join('')
-    : '<div class="empty"><i class="ti ti-moon"></i>No sleep entries yet</div>';
-  if (data.length) {
-    const avg = (data.reduce((a, b) => a + parseFloat(b.hours), 0) / data.length).toFixed(1);
-    const l7 = data.slice(-7), avg7 = l7.length ? (l7.reduce((a, b) => a + parseFloat(b.hours), 0) / l7.length).toFixed(1) : avg;
-    const avgQ = (data.reduce((a, b) => a + b.quality, 0) / data.length).toFixed(1);
-    document.getElementById('sl-stats').innerHTML = metTile('Avg sleep', avg7 + ' hrs') + metTile('Quality', avgQ + '/5') + metTile('Entries', data.length);
-    const labels = data.slice(-20).map(e => fmtD(e.date));
-    mkChart('sl-chart', 'bar', labels, [{ data: data.slice(-20).map(e => parseFloat(e.hours)), backgroundColor: 'rgba(94,207,168,0.7)', borderColor: '#5ecfa8', borderWidth: 1 }], 0);
-  } else { document.getElementById('sl-stats').innerHTML = ''; }
-}
-
-// ─── Render map & init ────────────────────────────────────────────────────────
-const renders = { dashboard: renderDashboard, weight: renderWeight, blood: renderBlood, mood: renderMood, meds: renderMeds, exercise: renderEx, sleep: renderSleep };
-renderDashboard();
-</script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #0d0d0f; --bg2: #141416; --bg3: #1c1c1f;
-    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
-    --text: #f0f0f2; --muted: #888896; --hint: #4a4a58;
-    --radius: 14px; --radius-sm: 8px;
-    --w: #4a9eff; --blood: #e05555; --mood: #8b84f7;
-    --meds: #2dbd8f; --ex: #f5a623; --sleep: #5ecfa8;
-    --font: 'DM Sans', sans-serif; --mono: 'DM Mono', monospace;
-  }
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
-  .shell { display: flex; height: 100vh; overflow: hidden; }
-  .sidebar { width: 220px; flex-shrink: 0; background: var(--bg2); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; padding: 24px 12px; overflow-y: auto; }
-  .logo { font-family: var(--mono); font-size: 18px; font-weight: 500; letter-spacing: -0.5px; color: var(--text); padding: 0 8px 28px; }
-  .logo span { color: var(--muted); }
-  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; color: var(--muted); transition: all 0.15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; font-family: var(--font); }
-  .nav-item i { font-size: 16px; width: 18px; flex-shrink: 0; }
-  .nav-item:hover { background: var(--bg3); color: var(--text); }
-  .nav-item.active { background: var(--bg3); color: var(--text); font-weight: 500; }
-  .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; margin-left: auto; }
-  .main { flex: 1; overflow-y: auto; padding: 28px 32px; }
-  .page { display: none; }
-  .page.active { display: block; }
-  .page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 20px; }
-  .color-rule { height: 2px; border-radius: 2px; width: 32px; display: inline-block; margin-right: 10px; vertical-align: middle; }
-  .g2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
-  .g3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-  .g-dash { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-  .card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 18px; }
-  .card-sm { background: var(--bg3); border-radius: var(--radius-sm); padding: 12px 14px; }
-  .sec { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hint); margin-bottom: 12px; }
-  .metric-val { font-size: 28px; font-weight: 500; font-family: var(--mono); letter-spacing: -1px; line-height: 1; }
-  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
-  .metric-change { font-size: 12px; margin-top: 5px; color: var(--muted); }
-  .form { display: flex; flex-direction: column; gap: 11px; }
-  .form label { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: block; letter-spacing: 0.04em; }
-  .form input, .form select, .form textarea { width: 100%; padding: 8px 11px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg3); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-  .form input:focus, .form select:focus, .form textarea:focus { border-color: rgba(255,255,255,0.25); }
-  .form select option { background: var(--bg3); }
-  .form textarea { resize: vertical; }
-  .btn { padding: 9px 20px; border-radius: 20px; border: none; background: var(--text); color: var(--bg); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity 0.15s; }
-  .btn:hover { opacity: 0.85; }
-  .btn-ghost { padding: 6px 13px; border-radius: 10px; border: 0.5px solid var(--border2); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; font-family: var(--font); }
-  .btn-ghost:hover { background: var(--bg3); color: var(--text); }
-  .entry-list { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
-  .entry { display: flex; justify-content: space-between; align-items: center; padding: 8px 11px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 13px; }
-  .entry-date { font-size: 11px; color: var(--hint); font-family: var(--mono); }
-  .empty { text-align: center; padding: 24px; color: var(--hint); font-size: 13px; }
-  .empty i { font-size: 26px; display: block; margin-bottom: 8px; }
-  .mood-row { display: flex; gap: 8px; margin-top: 4px; }
-  .moji { padding: 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: transparent; font-size: 22px; cursor: pointer; transition: all 0.15s; flex: 1; text-align: center; }
-  .moji:hover, .moji.on { border-color: var(--mood); background: rgba(139,132,247,0.12); }
-  .chart-wrap { position: relative; height: 180px; width: 100%; }
-  .wtemp { font-size: 42px; font-weight: 400; font-family: var(--mono); letter-spacing: -2px; line-height: 1; }
-  .wdesc { font-size: 13px; color: var(--muted); margin-top: 5px; }
-  .wmeta { display: flex; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--border); }
-  .wmeta-item { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
-  .wicon { font-size: 38px; color: var(--muted); margin-right: 14px; }
-  .clock-big { font-size: 42px; font-weight: 400; font-family: var(--mono); letter-spacing: -2px; line-height: 1; }
-  .clock-date { font-size: 13px; color: var(--muted); margin-top: 6px; }
-  .evt { display: flex; align-items: center; gap: 10px; padding: 8px 11px; background: var(--bg3); border-radius: var(--radius-sm); }
-  .evt-time { font-size: 12px; color: var(--hint); font-family: var(--mono); min-width: 40px; }
-  .evt-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .evt-title { font-size: 13px; flex: 1; }
-  .evt-del { font-size: 14px; color: var(--hint); cursor: pointer; padding: 2px 5px; border: none; background: none; border-radius: 4px; }
-  .evt-del:hover { color: var(--blood); }
-  .add-row { display: flex; gap: 6px; margin-top: 10px; }
-  .add-row input { flex: 1; padding: 8px 11px; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); background: var(--bg3); color: var(--text); font-size: 13px; outline: none; font-family: var(--font); }
-  .add-row input[type=time] { flex: 0 0 90px; }
-  .add-row input:focus { border-color: rgba(255,255,255,0.22); }
-  input[type=range] { accent-color: var(--mood); width: 100%; }
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @media(max-width: 680px) {
-    .sidebar { width: 60px; padding: 18px 8px; }
-    .logo, .nav-item span, .nav-item .dot { display: none; }
-    .nav-item { justify-content: center; padding: 10px; }
-    .main { padding: 18px 14px; }
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0f;--bg2:#141416;--bg3:#1c1c1f;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.14);
+  --text:#f0f0f2;--muted:#888896;--hint:#4a4a58;
+  --radius:14px;--radius-sm:8px;
+  --w:#4a9eff;--blood:#e05555;--mood:#8b84f7;
+  --meds:#2dbd8f;--ex:#f5a623;--sleep:#5ecfa8;--ai:#d4537e;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5}
+.shell{display:flex;height:100vh;overflow:hidden}
+/* Sidebar */
+.sidebar{width:220px;flex-shrink:0;background:var(--bg2);border-right:.5px solid var(--border);display:flex;flex-direction:column;padding:24px 12px;overflow-y:auto}
+.logo{font-family:var(--mono);font-size:18px;font-weight:500;letter-spacing:-.5px;color:var(--text);padding:0 8px 28px}
+.logo span{color:var(--muted)}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--muted);transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left;font-family:var(--font)}
+.nav-item i{font-size:16px;width:18px;flex-shrink:0}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:var(--bg3);color:var(--text);font-weight:500}
+.nav-item .dot{width:6px;height:6px;border-radius:50%;margin-left:auto}
+/* Main */
+.main{flex:1;overflow-y:auto;padding:28px 32px}
+.page{display:none}.page.active{display:block}
+.page-title{font-size:22px;font-weight:600;letter-spacing:-.5px;margin-bottom:20px}
+.color-rule{height:2px;border-radius:2px;width:32px;display:inline-block;margin-right:10px;vertical-align:middle}
+/* Grids */
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.g-dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+/* Cards */
+.card{background:var(--bg2);border:.5px solid var(--border);border-radius:var(--radius);padding:18px}
+.card-sm{background:var(--bg3);border-radius:var(--radius-sm);padding:12px 14px}
+.sec{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:12px}
+/* Metrics */
+.metric-val{font-size:26px;font-weight:500;font-family:var(--mono);letter-spacing:-1px;line-height:1}
+.metric-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+/* Form */
+.form{display:flex;flex-direction:column;gap:11px}
+.form label{font-size:11px;color:var(--muted);margin-bottom:3px;display:block;letter-spacing:.04em}
+.form input,.form select,.form textarea{width:100%;padding:8px 11px;border:.5px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:var(--font);outline:none;transition:border-color .15s}
+.form input:focus,.form select:focus,.form textarea:focus{border-color:rgba(255,255,255,.28)}
+.form select option{background:var(--bg3)}
+.form textarea{resize:vertical}
+.btn{padding:9px 20px;border-radius:20px;border:none;background:var(--text);color:var(--bg);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-ghost{padding:6px 12px;border-radius:10px;border:.5px solid var(--border2);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--font);transition:all .15s}
+.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-danger{padding:6px 12px;border-radius:10px;border:.5px solid rgba(224,85,85,.3);background:transparent;color:#e05555;font-size:12px;cursor:pointer;font-family:var(--font)}
+.btn-danger:hover{background:rgba(224,85,85,.1)}
+.btn-edit{padding:6px 12px;border-radius:10px;border:.5px solid var(--border2);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--font)}
+.btn-edit:hover{background:var(--bg3);color:var(--text)}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+/* Entry list */
+.entry-list{display:flex;flex-direction:column;gap:5px;max-height:260px;overflow-y:auto}
+.entry{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px;gap:8px;cursor:pointer;transition:background .12s}
+.entry:hover{background:#222226}
+.entry-actions{display:flex;gap:4px;flex-shrink:0}
+.entry-date{font-size:11px;color:var(--hint);font-family:var(--mono);flex-shrink:0}
+.empty{text-align:center;padding:24px;color:var(--hint);font-size:13px}
+.empty i{font-size:26px;display:block;margin-bottom:8px}
+/* Mood */
+.mood-row{display:flex;gap:8px;margin-top:4px}
+.moji{padding:10px;border-radius:var(--radius-sm);border:.5px solid var(--border);background:transparent;font-size:22px;cursor:pointer;transition:all .15s;flex:1;text-align:center}
+.moji:hover,.moji.on{border-color:var(--mood);background:rgba(139,132,247,.12)}
+/* Chart */
+.chart-wrap{position:relative;height:180px;width:100%}
+/* Weather */
+.wtemp{font-size:40px;font-weight:400;font-family:var(--mono);letter-spacing:-2px;line-height:1}
+.wdesc{font-size:13px;color:var(--muted);margin-top:4px}
+.wmeta{display:flex;gap:12px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--border);flex-wrap:wrap}
+.wmeta-item{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.wicon{font-size:36px;color:var(--muted);margin-right:12px}
+/* Clock */
+.clock-big{font-size:40px;font-weight:400;font-family:var(--mono);letter-spacing:-2px;line-height:1}
+.clock-date{font-size:13px;color:var(--muted);margin-top:6px}
+/* Agenda */
+.evt{display:flex;align-items:center;gap:10px;padding:8px 11px;background:var(--bg3);border-radius:var(--radius-sm)}
+.evt-time{font-size:12px;color:var(--hint);font-family:var(--mono);min-width:40px}
+.evt-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.evt-title{font-size:13px;flex:1}
+.add-row{display:flex;gap:6px;margin-top:10px}
+.add-row input{flex:1;padding:8px 11px;border:.5px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;outline:none;font-family:var(--font)}
+.add-row input[type=time]{flex:0 0 90px}
+.add-row input:focus{border-color:rgba(255,255,255,.22)}
+/* Edit banner */
+.edit-banner{background:rgba(74,158,255,.08);border:.5px solid rgba(74,158,255,.25);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:#4a9eff;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+/* AI Chat */
+.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:400px}
+.chat-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 0 16px}
+.msg{max-width:80%;padding:11px 14px;border-radius:12px;font-size:13px;line-height:1.6}
+.msg.user{align-self:flex-end;background:var(--text);color:var(--bg);border-radius:12px 12px 3px 12px}
+.msg.ai{align-self:flex-start;background:var(--bg3);color:var(--text);border-radius:12px 12px 12px 3px}
+.msg.ai.thinking{color:var(--muted);font-style:italic}
+.chat-input-row{display:flex;gap:8px;padding-top:12px;border-top:.5px solid var(--border)}
+.chat-input{flex:1;padding:10px 14px;border:.5px solid var(--border2);border-radius:20px;background:var(--bg3);color:var(--text);font-size:13px;font-family:var(--font);outline:none;resize:none}
+.chat-input:focus{border-color:rgba(255,255,255,.22)}
+.chat-send{padding:10px 18px;border-radius:20px;border:none;background:var(--ai);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);flex-shrink:0}
+.chat-send:hover{opacity:.85}
+.chat-send:disabled{opacity:.4;cursor:not-allowed}
+.chip-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{padding:5px 12px;border-radius:12px;border:.5px solid var(--border2);background:var(--bg3);color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--font);transition:all .15s}
+.chip:hover{background:var(--bg2);color:var(--text);border-color:var(--ai)}
+/* Misc */
+input[type=range]{accent-color:var(--mood);width:100%}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite;display:inline-block}
+@media(max-width:680px){
+  .sidebar{width:60px;padding:18px 8px}
+  .logo,.nav-item span,.nav-item .dot{display:none}
+  .nav-item{justify-content:center;padding:10px}
+  .main{padding:18px 14px}
+}
 </style>
 </head>
 <body>
 <div class="shell">
   <nav class="sidebar">
     <div class="logo">vita<span>.</span></div>
-    <button class="nav-item active" onclick="go('dashboard')" id="nb-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></button>
-    <button class="nav-item" onclick="go('weight')" id="nb-weight"><i class="ti ti-scale"></i><span>Weight</span><span class="dot" style="background:#4a9eff;"></span></button>
-    <button class="nav-item" onclick="go('blood')" id="nb-blood"><i class="ti ti-droplet-half-2"></i><span>Labs</span><span class="dot" style="background:#e05555;"></span></button>
-    <button class="nav-item" onclick="go('mood')" id="nb-mood"><i class="ti ti-brain"></i><span>Mood</span><span class="dot" style="background:#8b84f7;"></span></button>
-    <button class="nav-item" onclick="go('meds')" id="nb-meds"><i class="ti ti-pill"></i><span>Meds</span><span class="dot" style="background:#2dbd8f;"></span></button>
-    <button class="nav-item" onclick="go('exercise')" id="nb-exercise"><i class="ti ti-run"></i><span>Exercise</span><span class="dot" style="background:#f5a623;"></span></button>
-    <button class="nav-item" onclick="go('sleep')" id="nb-sleep"><i class="ti ti-moon"></i><span>Sleep</span><span class="dot" style="background:#5ecfa8;"></span></button>
+    <button class="nav-item active" id="nb-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></button>
+    <button class="nav-item" id="nb-weight"><i class="ti ti-scale"></i><span>Weight</span><span class="dot" style="background:var(--w)"></span></button>
+    <button class="nav-item" id="nb-blood"><i class="ti ti-droplet-half-2"></i><span>Labs</span><span class="dot" style="background:var(--blood)"></span></button>
+    <button class="nav-item" id="nb-mood"><i class="ti ti-brain"></i><span>Mood</span><span class="dot" style="background:var(--mood)"></span></button>
+    <button class="nav-item" id="nb-meds"><i class="ti ti-pill"></i><span>Meds</span><span class="dot" style="background:var(--meds)"></span></button>
+    <button class="nav-item" id="nb-exercise"><i class="ti ti-run"></i><span>Exercise</span><span class="dot" style="background:var(--ex)"></span></button>
+    <button class="nav-item" id="nb-sleep"><i class="ti ti-moon"></i><span>Sleep</span><span class="dot" style="background:var(--sleep)"></span></button>
+    <button class="nav-item" id="nb-ai"><i class="ti ti-message-bolt"></i><span>Ask Vita AI</span><span class="dot" style="background:var(--ai)"></span></button>
   </nav>
 
   <main class="main">
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
       <div class="page-title">Good <span id="greeting-time">day</span> 👋</div>
-      <div class="g-dash" style="margin-bottom:14px;">
+      <div class="g-dash" style="margin-bottom:14px">
         <div class="card">
           <div class="sec"><i class="ti ti-clock"></i> Istanbul</div>
           <div class="clock-big" id="clock">--:--</div>
@@ -437,20 +152,20 @@ renderDashboard();
         </div>
         <div class="card">
           <div class="sec"><i class="ti ti-cloud"></i> Weather</div>
-          <div id="weather-out"><span style="color:var(--hint);font-size:13px;">Loading…</span></div>
+          <div id="weather-out"><span style="color:var(--hint);font-size:13px">Loading…</span></div>
         </div>
         <div class="card">
           <div class="sec"><i class="ti ti-activity"></i> Latest</div>
-          <div id="dash-quick"><span style="color:var(--hint);font-size:13px;">Loading…</span></div>
+          <div id="dash-quick"><span style="color:var(--hint);font-size:13px">Loading…</span></div>
         </div>
       </div>
-      <div class="card" style="margin-bottom:14px;">
+      <div class="card" style="margin-bottom:14px">
         <div class="sec"><i class="ti ti-calendar-event"></i> Today's agenda</div>
-        <div id="evt-list" style="display:flex;flex-direction:column;gap:5px;min-height:20px;margin-bottom:10px;"></div>
+        <div id="evt-list" style="display:flex;flex-direction:column;gap:5px;min-height:20px;margin-bottom:10px"></div>
         <div class="add-row">
           <input type="time" id="evt-time" value="09:00">
           <input type="text" id="evt-title" placeholder="Add an event…">
-          <button class="btn" style="padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;" onclick="addEvt()"><i class="ti ti-plus"></i></button>
+          <button class="btn" id="evt-add-btn" style="padding:8px 16px;border-radius:var(--radius-sm);font-size:13px"><i class="ti ti-plus"></i></button>
         </div>
       </div>
       <div class="g2">
@@ -467,39 +182,41 @@ renderDashboard();
 
     <!-- WEIGHT -->
     <div class="page" id="page-weight">
-      <div class="page-title"><span class="color-rule" style="background:var(--w);"></span>Weight</div>
+      <div class="page-title"><span class="color-rule" style="background:var(--w)"></span>Weight</div>
       <div class="g2">
         <div class="card">
+          <div id="w-edit-banner" style="display:none" class="edit-banner"><span><i class="ti ti-pencil"></i> Editing entry</span><button class="btn-ghost" id="w-cancel-edit">Cancel</button></div>
           <div class="sec">Log entry</div>
           <div class="form">
             <div><label>Weight (kg)</label><input type="number" id="w-val" placeholder="75.2" step="0.1"></div>
             <div><label>Body fat % (optional)</label><input type="number" id="w-fat" placeholder="18.5" step="0.1"></div>
             <div><label>Date</label><input type="date" id="w-date"></div>
             <div><label>Notes</label><input type="text" id="w-note" placeholder="Morning weigh-in…"></div>
-            <button class="btn" onclick="logWeight()">Save entry</button>
+            <button class="btn" id="w-save-btn">Save entry</button>
           </div>
         </div>
         <div class="card">
           <div class="sec">Progress</div>
-          <div class="g3" id="w-stats" style="margin-bottom:14px;"></div>
+          <div class="g3" id="w-stats" style="margin-bottom:14px"></div>
           <div class="chart-wrap"><canvas id="w-chart"></canvas></div>
         </div>
       </div>
-      <div class="card" style="margin-top:14px;">
-        <div class="sec">History</div>
+      <div class="card" style="margin-top:14px">
+        <div class="sec">History <span style="color:var(--hint);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— click any entry to edit</span></div>
         <div class="entry-list" id="w-list"></div>
       </div>
     </div>
 
     <!-- LABS -->
     <div class="page" id="page-blood">
-      <div class="page-title"><span class="color-rule" style="background:var(--blood);"></span>Labs</div>
+      <div class="page-title"><span class="color-rule" style="background:var(--blood)"></span>Labs</div>
       <div class="g2">
         <div class="card">
+          <div id="b-edit-banner" style="display:none" class="edit-banner"><span><i class="ti ti-pencil"></i> Editing entry</span><button class="btn-ghost" id="b-cancel-edit">Cancel</button></div>
           <div class="sec">Log result</div>
           <div class="form">
             <div><label>Test</label>
-              <select id="b-test" onchange="document.getElementById('b-custom-wrap').style.display=this.value==='Custom'?'block':'none'">
+              <select id="b-test">
                 <option value="">Select…</option>
                 <option>Blood glucose (mg/dL)</option><option>HbA1c (%)</option>
                 <option>LDL cholesterol (mg/dL)</option><option>HDL cholesterol (mg/dL)</option>
@@ -509,11 +226,11 @@ renderDashboard();
                 <option>Custom</option>
               </select>
             </div>
-            <div id="b-custom-wrap" style="display:none;"><label>Custom name</label><input type="text" id="b-custom" placeholder="Name + unit"></div>
+            <div id="b-custom-wrap" style="display:none"><label>Custom name</label><input type="text" id="b-custom" placeholder="Name + unit"></div>
             <div><label>Value</label><input type="number" id="b-val" step="any" placeholder="Numeric result"></div>
             <div><label>Date</label><input type="date" id="b-date"></div>
             <div><label>Notes</label><input type="text" id="b-note" placeholder="Fasting, lab name…"></div>
-            <button class="btn" onclick="logBlood()">Save result</button>
+            <button class="btn" id="b-save-btn">Save result</button>
           </div>
         </div>
         <div class="card">
@@ -521,52 +238,52 @@ renderDashboard();
           <div id="b-latest" class="entry-list"></div>
         </div>
       </div>
-      <div class="card" style="margin-top:14px;">
-        <div class="sec">History</div>
+      <div class="card" style="margin-top:14px">
+        <div class="sec">History <span style="color:var(--hint);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— click any entry to edit</span></div>
         <div class="entry-list" id="b-list"></div>
       </div>
     </div>
 
     <!-- MOOD -->
     <div class="page" id="page-mood">
-      <div class="page-title"><span class="color-rule" style="background:var(--mood);"></span>Mood</div>
+      <div class="page-title"><span class="color-rule" style="background:var(--mood)"></span>Mood</div>
       <div class="g2">
         <div class="card">
+          <div id="m-edit-banner" style="display:none" class="edit-banner"><span><i class="ti ti-pencil"></i> Editing entry</span><button class="btn-ghost" id="m-cancel-edit">Cancel</button></div>
           <div class="sec">How are you feeling?</div>
           <div class="form">
             <div><label>Mood</label>
               <div class="mood-row">
-                <button class="moji" onclick="pickMood(1)" id="m1">😞</button>
-                <button class="moji" onclick="pickMood(2)" id="m2">😕</button>
-                <button class="moji" onclick="pickMood(3)" id="m3">😐</button>
-                <button class="moji" onclick="pickMood(4)" id="m4">🙂</button>
-                <button class="moji" onclick="pickMood(5)" id="m5">😄</button>
+                <button class="moji" id="m1">😞</button><button class="moji" id="m2">😕</button>
+                <button class="moji" id="m3">😐</button><button class="moji" id="m4">🙂</button>
+                <button class="moji" id="m5">😄</button>
               </div>
             </div>
-            <div><label>Energy <span id="m-e-out" style="color:var(--text);font-weight:500;">5</span>/10</label><input type="range" id="m-energy" min="1" max="10" value="5" oninput="document.getElementById('m-e-out').textContent=this.value"></div>
-            <div><label>Anxiety <span id="m-a-out" style="color:var(--text);font-weight:500;">3</span>/10</label><input type="range" id="m-anxiety" min="1" max="10" value="3" oninput="document.getElementById('m-a-out').textContent=this.value"></div>
+            <div><label>Energy <span id="m-e-out" style="color:var(--text);font-weight:500">5</span>/10</label><input type="range" id="m-energy" min="1" max="10" value="5"></div>
+            <div><label>Anxiety <span id="m-a-out" style="color:var(--text);font-weight:500">3</span>/10</label><input type="range" id="m-anxiety" min="1" max="10" value="3"></div>
             <div><label>Date</label><input type="date" id="m-date"></div>
             <div><label>Journal note</label><textarea id="m-note" rows="3" placeholder="What's on your mind…"></textarea></div>
-            <button class="btn" onclick="logMood()">Save entry</button>
+            <button class="btn" id="m-save-btn">Save entry</button>
           </div>
         </div>
         <div class="card">
           <div class="sec">Trend</div>
-          <div class="g3" id="m-stats" style="margin-bottom:14px;"></div>
+          <div class="g3" id="m-stats" style="margin-bottom:14px"></div>
           <div class="chart-wrap"><canvas id="m-chart"></canvas></div>
         </div>
       </div>
-      <div class="card" style="margin-top:14px;">
-        <div class="sec">Journal</div>
+      <div class="card" style="margin-top:14px">
+        <div class="sec">Journal <span style="color:var(--hint);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— click any entry to edit</span></div>
         <div class="entry-list" id="m-list"></div>
       </div>
     </div>
 
     <!-- MEDS -->
     <div class="page" id="page-meds">
-      <div class="page-title"><span class="color-rule" style="background:var(--meds);"></span>Medications</div>
+      <div class="page-title"><span class="color-rule" style="background:var(--meds)"></span>Medications</div>
       <div class="g2">
         <div class="card">
+          <div id="med-edit-banner" style="display:none" class="edit-banner"><span><i class="ti ti-pencil"></i> Editing entry</span><button class="btn-ghost" id="med-cancel-edit">Cancel</button></div>
           <div class="sec">Add medication / supplement</div>
           <div class="form">
             <div><label>Name</label><input type="text" id="med-name" placeholder="Vitamin D3, Metformin…"></div>
@@ -579,11 +296,11 @@ renderDashboard();
             </div>
             <div><label>Start date</label><input type="date" id="med-start"></div>
             <div><label>Notes</label><input type="text" id="med-note" placeholder="With food, morning…"></div>
-            <button class="btn" onclick="logMed()">Add</button>
+            <button class="btn" id="med-save-btn">Add</button>
           </div>
         </div>
         <div class="card">
-          <div class="sec">Active</div>
+          <div class="sec">Active <span style="color:var(--hint);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— click to edit</span></div>
           <div class="entry-list" id="med-list"></div>
         </div>
       </div>
@@ -591,9 +308,10 @@ renderDashboard();
 
     <!-- EXERCISE -->
     <div class="page" id="page-exercise">
-      <div class="page-title"><span class="color-rule" style="background:var(--ex);"></span>Exercise</div>
+      <div class="page-title"><span class="color-rule" style="background:var(--ex)"></span>Exercise</div>
       <div class="g2">
         <div class="card">
+          <div id="ex-edit-banner" style="display:none" class="edit-banner"><span><i class="ti ti-pencil"></i> Editing entry</span><button class="btn-ghost" id="ex-cancel-edit">Cancel</button></div>
           <div class="sec">Log workout</div>
           <div class="form">
             <div><label>Type</label>
@@ -607,56 +325,553 @@ renderDashboard();
             <div><label>Calories burned (optional)</label><input type="number" id="ex-cal" placeholder="320"></div>
             <div><label>Date</label><input type="date" id="ex-date"></div>
             <div><label>Notes</label><input type="text" id="ex-note" placeholder="How did it feel?"></div>
-            <button class="btn" onclick="logEx()">Save workout</button>
+            <button class="btn" id="ex-save-btn">Save workout</button>
           </div>
         </div>
         <div class="card">
           <div class="sec">Summary</div>
-          <div class="g3" id="ex-stats" style="margin-bottom:14px;"></div>
+          <div class="g3" id="ex-stats" style="margin-bottom:14px"></div>
           <div class="chart-wrap"><canvas id="ex-chart"></canvas></div>
         </div>
       </div>
-      <div class="card" style="margin-top:14px;">
-        <div class="sec">Workout log</div>
+      <div class="card" style="margin-top:14px">
+        <div class="sec">Workout log <span style="color:var(--hint);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— click any entry to edit</span></div>
         <div class="entry-list" id="ex-list"></div>
       </div>
     </div>
 
     <!-- SLEEP -->
     <div class="page" id="page-sleep">
-      <div class="page-title"><span class="color-rule" style="background:var(--sleep);"></span>Sleep</div>
+      <div class="page-title"><span class="color-rule" style="background:var(--sleep)"></span>Sleep</div>
       <div class="g2">
         <div class="card">
+          <div id="sl-edit-banner" style="display:none" class="edit-banner"><span><i class="ti ti-pencil"></i> Editing entry</span><button class="btn-ghost" id="sl-cancel-edit">Cancel</button></div>
           <div class="sec">Log sleep</div>
           <div class="form">
             <div><label>Bedtime</label><input type="time" id="sl-bed" value="23:00"></div>
             <div><label>Wake time</label><input type="time" id="sl-wake" value="07:00"></div>
             <div><label>Quality</label>
               <div class="mood-row">
-                <button class="moji" onclick="pickSleep(1)" id="sq1">😴</button>
-                <button class="moji" onclick="pickSleep(2)" id="sq2">😫</button>
-                <button class="moji" onclick="pickSleep(3)" id="sq3">😑</button>
-                <button class="moji" onclick="pickSleep(4)" id="sq4">😌</button>
-                <button class="moji" onclick="pickSleep(5)" id="sq5">🥳</button>
+                <button class="moji" id="sq1">😴</button><button class="moji" id="sq2">😫</button>
+                <button class="moji" id="sq3">😑</button><button class="moji" id="sq4">😌</button>
+                <button class="moji" id="sq5">🥳</button>
               </div>
             </div>
             <div><label>Date (night of)</label><input type="date" id="sl-date"></div>
             <div><label>Notes</label><input type="text" id="sl-note" placeholder="Caffeine, screen time…"></div>
-            <button class="btn" onclick="logSleep()">Save sleep</button>
+            <button class="btn" id="sl-save-btn">Save sleep</button>
           </div>
         </div>
         <div class="card">
           <div class="sec">Analysis</div>
-          <div class="g3" id="sl-stats" style="margin-bottom:14px;"></div>
+          <div class="g3" id="sl-stats" style="margin-bottom:14px"></div>
           <div class="chart-wrap"><canvas id="sl-chart"></canvas></div>
         </div>
       </div>
-      <div class="card" style="margin-top:14px;">
-        <div class="sec">Sleep log</div>
+      <div class="card" style="margin-top:14px">
+        <div class="sec">Sleep log <span style="color:var(--hint);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px">— click any entry to edit</span></div>
         <div class="entry-list" id="sl-list"></div>
+      </div>
+    </div>
+
+    <!-- AI CHAT -->
+    <div class="page" id="page-ai">
+      <div class="page-title"><span class="color-rule" style="background:var(--ai)"></span>Ask Vita AI</div>
+      <div class="card chat-wrap">
+        <div class="chip-row" id="ai-chips">
+          <button class="chip" data-q="How has my weight changed over the last month?">📉 Weight trend</button>
+          <button class="chip" data-q="What does my average sleep look like? Am I getting enough?">😴 Sleep quality</button>
+          <button class="chip" data-q="How has my mood been lately? Any patterns?">🧠 Mood patterns</button>
+          <button class="chip" data-q="Summarize my exercise activity for the last 30 days">🏃 Exercise summary</button>
+          <button class="chip" data-q="Are there any correlations between my sleep and mood?">🔗 Sleep vs mood</button>
+          <button class="chip" data-q="Give me an overview of all my health data">📊 Full overview</button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+          <div class="msg ai">👋 Hi! I'm Vita AI. Ask me anything about your health data — I can spot trends, compare metrics, and help you understand patterns across weight, mood, sleep, exercise, and labs.</div>
+        </div>
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chat-input" placeholder="Ask about your data…" rows="1"></textarea>
+          <button class="chat-send" id="chat-send-btn"><i class="ti ti-send"></i></button>
+        </div>
       </div>
     </div>
   </main>
 </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyALNtcw8XitXtT6e5CSxYvFjsD6aVzHSGk",
+  authDomain: "vita-health-7b9c2.firebaseapp.com",
+  projectId: "vita-health-7b9c2",
+  storageBucket: "vita-health-7b9c2.firebasestorage.app",
+  messagingSenderId: "176682806540",
+  appId: "1:176682806540:web:1f4e38a0caee0d5ff76d29"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ── DB helpers ──────────────────────────────────────────────────────────────
+async function dbAdd(col, data) { return await addDoc(collection(db, col), { ...data, _ts: Date.now() }); }
+async function dbAll(col) {
+  const snap = await getDocs(query(collection(db, col), orderBy('date','asc')));
+  return snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+}
+async function dbDel(col, id) { await deleteDoc(doc(db, col, id)); }
+async function dbUpdate(col, id, data) { await updateDoc(doc(db, col, id), data); }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const td = () => new Date().toISOString().slice(0,10);
+const fmtD = d => { try { return new Date(d+'T12:00:00').toLocaleDateString('tr-TR',{day:'numeric',month:'short',year:'2-digit'}); } catch(e) { return d; } };
+const pz = n => String(n).padStart(2,'0');
+function initDate(...ids) { ids.forEach(id => { const el=document.getElementById(id); if(el&&!el.value) el.value=td(); }); }
+const charts = {};
+function mkChart(id, type, labels, datasets, yMin) {
+  if(charts[id]) charts[id].destroy();
+  const ctx = document.getElementById(id); if(!ctx) return;
+  charts[id] = new Chart(ctx, { type, data:{labels,datasets}, options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#4a4a58',font:{size:10},maxTicksLimit:7}},
+      y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#4a4a58',font:{size:10}},...(yMin!==undefined?{min:yMin}:{})}
+    }
+  }});
+}
+function tile(label, val) { return `<div class="card-sm"><div class="metric-label">${label}</div><div class="metric-val">${val}</div></div>`; }
+function actionBtns(id, col) {
+  return `<div class="entry-actions"><button class="btn-edit" data-id="${id}" data-col="${col}"><i class="ti ti-pencil"></i></button><button class="btn-danger" data-id="${id}" data-col="${col}"><i class="ti ti-trash"></i></button></div>`;
+}
+
+// ── Nav ─────────────────────────────────────────────────────────────────────
+const pages = ['dashboard','weight','blood','mood','meds','exercise','sleep','ai'];
+pages.forEach(name => {
+  document.getElementById('nb-'+name).addEventListener('click', () => go(name));
+});
+function go(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.getElementById('nb-'+name).classList.add('active');
+  const r = renders[name]; if(r) r();
+}
+
+// ── Clock ───────────────────────────────────────────────────────────────────
+function tickClock() {
+  const ist = new Date(new Date().toLocaleString('en-US',{timeZone:'Europe/Istanbul'}));
+  const h = ist.getHours();
+  document.getElementById('clock').textContent = pz(h)+':'+pz(ist.getMinutes());
+  const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('clock-date').textContent = days[ist.getDay()]+', '+ist.getDate()+' '+months[ist.getMonth()];
+  document.getElementById('greeting-time').textContent = h<12?'morning':h<18?'afternoon':'evening';
+}
+tickClock(); setInterval(tickClock,1000);
+
+// ── Weather ─────────────────────────────────────────────────────────────────
+const wIcon = c => c===0?'ti-sun':c<=2?'ti-cloud-sun':c<=3?'ti-cloud':c<=49?'ti-mist':c<=59?'ti-cloud-drizzle':c<=69?'ti-cloud-rain':c<=79?'ti-snowflake':c<=82?'ti-cloud-rain':c<=86?'ti-snowflake':'ti-cloud-storm';
+const wDesc = c => c===0?'Clear sky':c===1?'Mostly clear':c===2?'Partly cloudy':c===3?'Overcast':c<=49?'Foggy':c<=59?'Drizzle':c<=69?'Rain':c<=79?'Snow':c<=82?'Showers':c<=86?'Snow showers':'Thunderstorm';
+async function fetchWeather() {
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=41.0082&longitude=28.9784&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,relativehumidity_2m&hourly=precipitation_probability&timezone=Europe/Istanbul&forecast_days=1');
+    const d = await r.json(); const c = d.current;
+    const hourNow = new Date(new Date().toLocaleString('en-US',{timeZone:'Europe/Istanbul'})).getHours();
+    const precip = d.hourly?.precipitation_probability?.[hourNow] ?? '--';
+    document.getElementById('weather-out').innerHTML = `
+      <div style="display:flex;align-items:center">
+        <i class="ti ${wIcon(c.weathercode)} wicon"></i>
+        <div><div class="wtemp">${Math.round(c.temperature_2m)}°</div><div class="wdesc">${wDesc(c.weathercode)}</div></div>
+      </div>
+      <div class="wmeta">
+        <div class="wmeta-item"><i class="ti ti-thermometer"></i> Feels ${Math.round(c.apparent_temperature)}°</div>
+        <div class="wmeta-item"><i class="ti ti-wind"></i> ${Math.round(c.windspeed_10m)} km/h</div>
+        <div class="wmeta-item"><i class="ti ti-droplet"></i> ${Math.round(c.relativehumidity_2m)}%</div>
+        <div class="wmeta-item"><i class="ti ti-umbrella"></i> ${precip}% precip</div>
+      </div>`;
+  } catch(e) { document.getElementById('weather-out').innerHTML='<span style="color:var(--hint);font-size:13px">Weather unavailable</span>'; }
+}
+fetchWeather(); setInterval(fetchWeather,600000);
+
+// ── Agenda ──────────────────────────────────────────────────────────────────
+const DOT_COLORS=['#4a9eff','#e05555','#8b84f7','#2dbd8f','#f5a623','#5ecfa8','#d4537e'];
+async function renderEvts() {
+  const evts = await dbAll('agenda');
+  const el = document.getElementById('evt-list');
+  if(!evts.length) { el.innerHTML='<div style="color:var(--hint);font-size:13px;padding:6px 0">No events yet</div>'; return; }
+  el.innerHTML = [...evts].sort((a,b)=>a.time.localeCompare(b.time)).map(e =>
+    `<div class="evt"><span class="evt-time">${e.time}</span><span class="evt-dot" style="background:${e.color}"></span><span class="evt-title">${e.title}</span><button class="btn-danger" style="padding:4px 8px" data-id="${e._id}" data-col="agenda"><i class="ti ti-x"></i></button></div>`
+  ).join('');
+  el.querySelectorAll('.btn-danger').forEach(btn => btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    await dbDel('agenda', btn.dataset.id);
+    renderEvts();
+  }));
+}
+document.getElementById('evt-add-btn').addEventListener('click', async () => {
+  const time = document.getElementById('evt-time').value;
+  const title = document.getElementById('evt-title').value.trim();
+  if(!title) return;
+  await dbAdd('agenda', { time, title, color: DOT_COLORS[Math.floor(Math.random()*DOT_COLORS.length)], date: td() });
+  document.getElementById('evt-title').value='';
+  renderEvts();
+});
+document.getElementById('evt-title').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('evt-add-btn').click(); });
+
+// ── Dashboard ───────────────────────────────────────────────────────────────
+async function renderDashboard() {
+  renderEvts();
+  const [W,M,S,E] = await Promise.all([dbAll('weight'),dbAll('mood'),dbAll('sleep'),dbAll('exercise')]);
+  let q='';
+  if(W.length){const l=W[W.length-1];q+=`<div style="margin-bottom:8px"><span style="color:var(--hint);font-size:11px">Weight</span><br><strong style="font-family:var(--mono)">${parseFloat(l.val).toFixed(1)} kg</strong></div>`;}
+  if(M.length){const l=M[M.length-1];const em=['','😞','😕','😐','🙂','😄'];q+=`<div style="margin-bottom:8px"><span style="color:var(--hint);font-size:11px">Mood</span><br><strong>${em[l.mood]}</strong></div>`;}
+  if(S.length){const l=S[S.length-1];q+=`<div style="margin-bottom:8px"><span style="color:var(--hint);font-size:11px">Sleep</span><br><strong style="font-family:var(--mono)">${parseFloat(l.hours).toFixed(1)} hrs</strong></div>`;}
+  document.getElementById('dash-quick').innerHTML=q||'<span style="color:var(--hint);font-size:13px">Start logging to see stats</span>';
+  if(W.length>1){
+    const labels=W.slice(-20).map(e=>fmtD(e.date)),vals=W.slice(-20).map(e=>parseFloat(e.val));
+    mkChart('dash-wc','line',labels,[{data:vals,borderColor:'#4a9eff',backgroundColor:'rgba(74,158,255,0.08)',borderWidth:2,pointRadius:2,tension:0.3,fill:true}],Math.min(...vals)-2);
+  } else {
+    const c=document.getElementById('dash-wc');if(c)c.parentElement.innerHTML='<div class="empty"><i class="ti ti-chart-line"></i>Log 2+ weight entries to see trend</div>';
+  }
+  const recent=[];
+  W.slice(-2).forEach(e=>recent.push({date:e.date,text:`Weight ${parseFloat(e.val).toFixed(1)} kg`,c:'var(--w)'}));
+  M.slice(-2).forEach(e=>{const em=['','😞','😕','😐','🙂','😄'];recent.push({date:e.date,text:`Mood ${em[e.mood]}`,c:'var(--mood)'});});
+  S.slice(-2).forEach(e=>recent.push({date:e.date,text:`Sleep ${parseFloat(e.hours).toFixed(1)} hrs`,c:'var(--sleep)'}));
+  E.slice(-2).forEach(e=>recent.push({date:e.date,text:`${e.type} ${e.dur} min`,c:'var(--ex)'}));
+  recent.sort((a,b)=>b.date.localeCompare(a.date));
+  document.getElementById('dash-recent').innerHTML=recent.length
+    ?recent.slice(0,8).map(r=>`<div class="entry" style="cursor:default"><span style="display:flex;align-items:center;gap:8px"><span style="width:6px;height:6px;border-radius:50%;background:${r.c};flex-shrink:0;display:inline-block"></span>${r.text}</span><span class="entry-date">${fmtD(r.date)}</span></div>`).join('')
+    :'<div class="empty"><i class="ti ti-notes"></i>No entries yet</div>';
+}
+
+// ── WEIGHT ──────────────────────────────────────────────────────────────────
+let wEditId = null;
+function wResetForm(){wEditId=null;document.getElementById('w-edit-banner').style.display='none';document.getElementById('w-save-btn').textContent='Save entry';['w-val','w-fat','w-note'].forEach(id=>document.getElementById(id).value='');document.getElementById('w-date').value=td();}
+document.getElementById('w-cancel-edit').addEventListener('click',()=>{wResetForm();renderWeight();});
+document.getElementById('w-save-btn').addEventListener('click', async () => {
+  const val=parseFloat(document.getElementById('w-val').value);
+  if(!val||val<20||val>300){alert('Enter a valid weight (20–300 kg)');return;}
+  const fat=parseFloat(document.getElementById('w-fat').value)||null;
+  const date=document.getElementById('w-date').value||td();
+  const note=document.getElementById('w-note').value;
+  if(wEditId){await dbUpdate('weight',wEditId,{val,fat,date,note});}
+  else{await dbAdd('weight',{val,fat,date,note});}
+  wResetForm();renderWeight();
+});
+async function renderWeight(){
+  initDate('w-date');
+  const data=await dbAll('weight');
+  const list=document.getElementById('w-list');
+  if(!data.length){list.innerHTML='<div class="empty"><i class="ti ti-scale"></i>No entries yet</div>';document.getElementById('w-stats').innerHTML='';return;}
+  list.innerHTML=data.slice().reverse().slice(0,30).map(e=>
+    `<div class="entry" data-id="${e._id}"><span>${parseFloat(e.val).toFixed(1)} kg${e.fat?' · '+e.fat+'% fat':''}${e.note?' — <span style="color:var(--muted)">'+e.note+'</span>':''}</span><div style="display:flex;align-items:center;gap:8px"><span class="entry-date">${fmtD(e.date)}</span>${actionBtns(e._id,'weight')}</div></div>`
+  ).join('');
+  list.querySelectorAll('.entry').forEach(row=>{
+    row.addEventListener('click',e=>{if(e.target.closest('.entry-actions'))return;
+      const id=row.dataset.id,en=data.find(x=>x._id===id);if(!en)return;
+      wEditId=id;document.getElementById('w-val').value=en.val;document.getElementById('w-fat').value=en.fat||'';
+      document.getElementById('w-date').value=en.date;document.getElementById('w-note').value=en.note||'';
+      document.getElementById('w-edit-banner').style.display='flex';document.getElementById('w-save-btn').textContent='Update entry';
+      document.getElementById('w-val').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  list.querySelectorAll('.btn-danger').forEach(btn=>btn.addEventListener('click',async e=>{e.stopPropagation();if(!confirm('Delete this entry?'))return;await dbDel('weight',btn.dataset.id);wResetForm();renderWeight();}));
+  const vals=data.map(e=>parseFloat(e.val)),first=vals[0],last=vals[vals.length-1],diff=(last-first).toFixed(1);
+  document.getElementById('w-stats').innerHTML=tile('Current',last.toFixed(1)+' kg')+tile('Change',(diff>0?'+':'')+diff+' kg')+tile('Entries',data.length);
+  const v=data.slice(-30).map(e=>parseFloat(e.val));
+  mkChart('w-chart','line',data.slice(-30).map(e=>fmtD(e.date)),[{data:v,borderColor:'#4a9eff',backgroundColor:'rgba(74,158,255,0.1)',borderWidth:2,pointRadius:3,tension:0.3,fill:true}],Math.min(...v)-2);
+}
+
+// ── LABS ─────────────────────────────────────────────────────────────────────
+let bEditId=null;
+document.getElementById('b-test').addEventListener('change',function(){document.getElementById('b-custom-wrap').style.display=this.value==='Custom'?'block':'none';});
+function bResetForm(){bEditId=null;document.getElementById('b-edit-banner').style.display='none';document.getElementById('b-save-btn').textContent='Save result';['b-val','b-note','b-custom'].forEach(id=>document.getElementById(id).value='');document.getElementById('b-test').value='';document.getElementById('b-custom-wrap').style.display='none';document.getElementById('b-date').value=td();}
+document.getElementById('b-cancel-edit').addEventListener('click',()=>{bResetForm();renderBlood();});
+document.getElementById('b-save-btn').addEventListener('click',async()=>{
+  let test=document.getElementById('b-test').value;
+  if(test==='Custom')test=document.getElementById('b-custom').value;
+  if(!test){alert('Select or enter a test name');return;}
+  const val=parseFloat(document.getElementById('b-val').value);
+  if(isNaN(val)){alert('Enter a numeric value');return;}
+  const date=document.getElementById('b-date').value||td();
+  const note=document.getElementById('b-note').value;
+  if(bEditId){await dbUpdate('blood',bEditId,{test,val,date,note});}
+  else{await dbAdd('blood',{test,val,date,note});}
+  bResetForm();renderBlood();
+});
+async function renderBlood(){
+  initDate('b-date');
+  const data=await dbAll('blood');
+  const list=document.getElementById('b-list');
+  if(!data.length){list.innerHTML='<div class="empty"><i class="ti ti-droplet-half-2"></i>No results yet</div>';document.getElementById('b-latest').innerHTML='<div class="empty"><i class="ti ti-test-pipe"></i>No results yet</div>';return;}
+  list.innerHTML=data.slice().reverse().slice(0,30).map(e=>
+    `<div class="entry" data-id="${e._id}"><span><strong style="font-weight:500">${e.test}</strong>: ${e.val}${e.note?' — <span style="color:var(--muted)">'+e.note+'</span>':''}</span><div style="display:flex;align-items:center;gap:8px"><span class="entry-date">${fmtD(e.date)}</span>${actionBtns(e._id,'blood')}</div></div>`
+  ).join('');
+  list.querySelectorAll('.entry').forEach(row=>{
+    row.addEventListener('click',e=>{if(e.target.closest('.entry-actions'))return;
+      const id=row.dataset.id,en=data.find(x=>x._id===id);if(!en)return;
+      bEditId=id;
+      const sel=document.getElementById('b-test');
+      const opt=[...sel.options].find(o=>o.value===en.test);
+      if(opt){sel.value=en.test;document.getElementById('b-custom-wrap').style.display='none';}
+      else{sel.value='Custom';document.getElementById('b-custom-wrap').style.display='block';document.getElementById('b-custom').value=en.test;}
+      document.getElementById('b-val').value=en.val;document.getElementById('b-date').value=en.date;document.getElementById('b-note').value=en.note||'';
+      document.getElementById('b-edit-banner').style.display='flex';document.getElementById('b-save-btn').textContent='Update result';
+      document.getElementById('b-val').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  list.querySelectorAll('.btn-danger').forEach(btn=>btn.addEventListener('click',async e=>{e.stopPropagation();if(!confirm('Delete?'))return;await dbDel('blood',btn.dataset.id);bResetForm();renderBlood();}));
+  const byTest={};data.forEach(e=>{if(!byTest[e.test]||e.date>byTest[e.test].date)byTest[e.test]=e;});
+  document.getElementById('b-latest').innerHTML=Object.values(byTest).map(e=>
+    `<div class="entry" style="cursor:default"><span style="color:var(--muted);font-size:12px">${e.test}</span><span style="font-family:var(--mono);font-weight:500">${e.val} <span style="font-size:11px;color:var(--hint)">${fmtD(e.date)}</span></span></div>`
+  ).join('');
+}
+
+// ── MOOD ─────────────────────────────────────────────────────────────────────
+let selMood=null,mEditId=null;
+[1,2,3,4,5].forEach(i=>document.getElementById('m'+i).addEventListener('click',()=>{selMood=i;[1,2,3,4,5].forEach(j=>document.getElementById('m'+j).classList.toggle('on',j===i));}));
+document.getElementById('m-energy').addEventListener('input',function(){document.getElementById('m-e-out').textContent=this.value;});
+document.getElementById('m-anxiety').addEventListener('input',function(){document.getElementById('m-a-out').textContent=this.value;});
+function mResetForm(){mEditId=null;selMood=null;[1,2,3,4,5].forEach(i=>document.getElementById('m'+i).classList.remove('on'));document.getElementById('m-energy').value=5;document.getElementById('m-e-out').textContent=5;document.getElementById('m-anxiety').value=3;document.getElementById('m-a-out').textContent=3;document.getElementById('m-note').value='';document.getElementById('m-edit-banner').style.display='none';document.getElementById('m-save-btn').textContent='Save entry';document.getElementById('m-date').value=td();}
+document.getElementById('m-cancel-edit').addEventListener('click',()=>{mResetForm();renderMood();});
+document.getElementById('m-save-btn').addEventListener('click',async()=>{
+  if(!selMood){alert('Select a mood');return;}
+  const energy=parseInt(document.getElementById('m-energy').value);
+  const anxiety=parseInt(document.getElementById('m-anxiety').value);
+  const date=document.getElementById('m-date').value||td();
+  const note=document.getElementById('m-note').value;
+  if(mEditId){await dbUpdate('mood',mEditId,{mood:selMood,energy,anxiety,date,note});}
+  else{await dbAdd('mood',{mood:selMood,energy,anxiety,date,note});}
+  mResetForm();renderMood();
+});
+async function renderMood(){
+  initDate('m-date');
+  const data=await dbAll('mood');
+  const em=['','😞','😕','😐','🙂','😄'];
+  const list=document.getElementById('m-list');
+  if(!data.length){list.innerHTML='<div class="empty"><i class="ti ti-brain"></i>No entries yet</div>';document.getElementById('m-stats').innerHTML='';return;}
+  list.innerHTML=data.slice().reverse().slice(0,30).map(e=>
+    `<div class="entry" data-id="${e._id}"><span>${em[e.mood]} mood ${e.mood}/5 · ⚡${e.energy} · 😰${e.anxiety}${e.note?' — <span style="color:var(--muted)">'+e.note+'</span>':''}</span><div style="display:flex;align-items:center;gap:8px"><span class="entry-date">${fmtD(e.date)}</span>${actionBtns(e._id,'mood')}</div></div>`
+  ).join('');
+  list.querySelectorAll('.entry').forEach(row=>{
+    row.addEventListener('click',e=>{if(e.target.closest('.entry-actions'))return;
+      const id=row.dataset.id,en=data.find(x=>x._id===id);if(!en)return;
+      mEditId=id;selMood=en.mood;[1,2,3,4,5].forEach(i=>document.getElementById('m'+i).classList.toggle('on',i===en.mood));
+      document.getElementById('m-energy').value=en.energy;document.getElementById('m-e-out').textContent=en.energy;
+      document.getElementById('m-anxiety').value=en.anxiety;document.getElementById('m-a-out').textContent=en.anxiety;
+      document.getElementById('m-date').value=en.date;document.getElementById('m-note').value=en.note||'';
+      document.getElementById('m-edit-banner').style.display='flex';document.getElementById('m-save-btn').textContent='Update entry';
+      document.getElementById('m1').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  list.querySelectorAll('.btn-danger').forEach(btn=>btn.addEventListener('click',async e=>{e.stopPropagation();if(!confirm('Delete?'))return;await dbDel('mood',btn.dataset.id);mResetForm();renderMood();}));
+  const avg=(data.reduce((a,b)=>a+b.mood,0)/data.length).toFixed(1);
+  const avgE=(data.reduce((a,b)=>a+b.energy,0)/data.length).toFixed(1);
+  document.getElementById('m-stats').innerHTML=tile('Avg mood',avg+'/5')+tile('Avg energy',avgE+'/10')+tile('Entries',data.length);
+  mkChart('m-chart','line',data.slice(-30).map(e=>fmtD(e.date)),[{data:data.slice(-30).map(e=>e.mood),borderColor:'#8b84f7',backgroundColor:'rgba(139,132,247,0.1)',borderWidth:2,pointRadius:3,tension:0.3,fill:true}],0);
+}
+
+// ── MEDS ─────────────────────────────────────────────────────────────────────
+let medEditId=null;
+function medResetForm(){medEditId=null;['med-name','med-dose','med-note'].forEach(id=>document.getElementById(id).value='');document.getElementById('med-freq').value='Once daily';document.getElementById('med-edit-banner').style.display='none';document.getElementById('med-save-btn').textContent='Add';document.getElementById('med-start').value=td();}
+document.getElementById('med-cancel-edit').addEventListener('click',()=>{medResetForm();renderMeds();});
+document.getElementById('med-save-btn').addEventListener('click',async()=>{
+  const name=document.getElementById('med-name').value.trim();
+  if(!name){alert('Enter a name');return;}
+  const dose=document.getElementById('med-dose').value.trim();
+  const freq=document.getElementById('med-freq').value;
+  const start=document.getElementById('med-start').value||td();
+  const note=document.getElementById('med-note').value;
+  if(medEditId){await dbUpdate('meds',medEditId,{name,dose,freq,start,date:start,note});}
+  else{await dbAdd('meds',{name,dose,freq,start,date:start,note});}
+  medResetForm();renderMeds();
+});
+async function renderMeds(){
+  initDate('med-start');
+  const data=await dbAll('meds');
+  const list=document.getElementById('med-list');
+  if(!data.length){list.innerHTML='<div class="empty"><i class="ti ti-pill"></i>No medications added</div>';return;}
+  list.innerHTML=data.map(e=>
+    `<div class="entry" data-id="${e._id}"><div><div style="font-weight:500">${e.name}</div><div style="font-size:11px;color:var(--hint)">${e.dose||''}${e.dose?' · ':''}${e.freq} · from ${fmtD(e.start)}${e.note?' · '+e.note:''}</div></div>${actionBtns(e._id,'meds')}</div>`
+  ).join('');
+  list.querySelectorAll('.entry').forEach(row=>{
+    row.addEventListener('click',e=>{if(e.target.closest('.entry-actions'))return;
+      const id=row.dataset.id,en=data.find(x=>x._id===id);if(!en)return;
+      medEditId=id;document.getElementById('med-name').value=en.name;document.getElementById('med-dose').value=en.dose||'';
+      document.getElementById('med-freq').value=en.freq;document.getElementById('med-start').value=en.start;document.getElementById('med-note').value=en.note||'';
+      document.getElementById('med-edit-banner').style.display='flex';document.getElementById('med-save-btn').textContent='Update';
+      document.getElementById('med-name').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  list.querySelectorAll('.btn-danger').forEach(btn=>btn.addEventListener('click',async e=>{e.stopPropagation();if(!confirm('Delete?'))return;await dbDel('meds',btn.dataset.id);medResetForm();renderMeds();}));
+}
+
+// ── EXERCISE ─────────────────────────────────────────────────────────────────
+let exEditId=null;
+function exResetForm(){exEditId=null;['ex-dur','ex-dist','ex-cal','ex-note'].forEach(id=>document.getElementById(id).value='');document.getElementById('ex-type').value='Running';document.getElementById('ex-edit-banner').style.display='none';document.getElementById('ex-save-btn').textContent='Save workout';document.getElementById('ex-date').value=td();}
+document.getElementById('ex-cancel-edit').addEventListener('click',()=>{exResetForm();renderEx();});
+document.getElementById('ex-save-btn').addEventListener('click',async()=>{
+  const type=document.getElementById('ex-type').value;
+  const dur=parseInt(document.getElementById('ex-dur').value);
+  if(!dur||dur<1){alert('Enter duration');return;}
+  const dist=parseFloat(document.getElementById('ex-dist').value)||null;
+  const cal=parseInt(document.getElementById('ex-cal').value)||null;
+  const date=document.getElementById('ex-date').value||td();
+  const note=document.getElementById('ex-note').value;
+  if(exEditId){await dbUpdate('exercise',exEditId,{type,dur,dist,cal,date,note});}
+  else{await dbAdd('exercise',{type,dur,dist,cal,date,note});}
+  exResetForm();renderEx();
+});
+async function renderEx(){
+  initDate('ex-date');
+  const data=await dbAll('exercise');
+  const list=document.getElementById('ex-list');
+  if(!data.length){list.innerHTML='<div class="empty"><i class="ti ti-run"></i>No workouts yet</div>';document.getElementById('ex-stats').innerHTML='';return;}
+  list.innerHTML=data.slice().reverse().slice(0,30).map(e=>
+    `<div class="entry" data-id="${e._id}"><span><strong style="font-weight:500">${e.type}</strong> · ${e.dur} min${e.dist?' · '+e.dist+' km':''}${e.cal?' · ~'+e.cal+' kcal':''}${e.note?' — <span style="color:var(--muted)">'+e.note+'</span>':''}</span><div style="display:flex;align-items:center;gap:8px"><span class="entry-date">${fmtD(e.date)}</span>${actionBtns(e._id,'exercise')}</div></div>`
+  ).join('');
+  list.querySelectorAll('.entry').forEach(row=>{
+    row.addEventListener('click',e=>{if(e.target.closest('.entry-actions'))return;
+      const id=row.dataset.id,en=data.find(x=>x._id===id);if(!en)return;
+      exEditId=id;document.getElementById('ex-type').value=en.type;document.getElementById('ex-dur').value=en.dur;
+      document.getElementById('ex-dist').value=en.dist||'';document.getElementById('ex-cal').value=en.cal||'';
+      document.getElementById('ex-date').value=en.date;document.getElementById('ex-note').value=en.note||'';
+      document.getElementById('ex-edit-banner').style.display='flex';document.getElementById('ex-save-btn').textContent='Update workout';
+      document.getElementById('ex-type').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  list.querySelectorAll('.btn-danger').forEach(btn=>btn.addEventListener('click',async e=>{e.stopPropagation();if(!confirm('Delete?'))return;await dbDel('exercise',btn.dataset.id);exResetForm();renderEx();}));
+  const l30=data.filter(e=>e.date>=new Date(Date.now()-30*86400000).toISOString().slice(0,10));
+  document.getElementById('ex-stats').innerHTML=tile('Workouts (30d)',l30.length)+tile('Minutes (30d)',l30.reduce((a,b)=>a+b.dur,0))+(l30.some(e=>e.cal)?tile('Calories (30d)',l30.reduce((a,b)=>a+(b.cal||0),0)+' kcal'):'');
+  mkChart('ex-chart','bar',data.slice(-20).map(e=>fmtD(e.date)),[{data:data.slice(-20).map(e=>e.dur),backgroundColor:'rgba(245,166,35,0.7)',borderColor:'#f5a623',borderWidth:1}]);
+}
+
+// ── SLEEP ────────────────────────────────────────────────────────────────────
+let selSleep=null,slEditId=null;
+[1,2,3,4,5].forEach(i=>document.getElementById('sq'+i).addEventListener('click',()=>{selSleep=i;[1,2,3,4,5].forEach(j=>document.getElementById('sq'+j).classList.toggle('on',j===i));}));
+function calcHours(bed,wake){const[bh,bm]=bed.split(':').map(Number),[wh,wm]=wake.split(':').map(Number);let m=(wh*60+wm)-(bh*60+bm);if(m<0)m+=1440;return parseFloat((m/60).toFixed(2));}
+function slResetForm(){slEditId=null;selSleep=null;[1,2,3,4,5].forEach(i=>document.getElementById('sq'+i).classList.remove('on'));document.getElementById('sl-bed').value='23:00';document.getElementById('sl-wake').value='07:00';document.getElementById('sl-note').value='';document.getElementById('sl-edit-banner').style.display='none';document.getElementById('sl-save-btn').textContent='Save sleep';document.getElementById('sl-date').value=td();}
+document.getElementById('sl-cancel-edit').addEventListener('click',()=>{slResetForm();renderSleep();});
+document.getElementById('sl-save-btn').addEventListener('click',async()=>{
+  const bed=document.getElementById('sl-bed').value,wake=document.getElementById('sl-wake').value;
+  if(!bed||!wake){alert('Enter bedtime and wake time');return;}
+  const hours=calcHours(bed,wake),quality=selSleep||3;
+  const date=document.getElementById('sl-date').value||td();
+  const note=document.getElementById('sl-note').value;
+  if(slEditId){await dbUpdate('sleep',slEditId,{bed,wake,hours,quality,date,note});}
+  else{await dbAdd('sleep',{bed,wake,hours,quality,date,note});}
+  slResetForm();renderSleep();
+});
+async function renderSleep(){
+  initDate('sl-date');
+  const data=await dbAll('sleep');
+  const qe=['','😴','😫','😑','😌','🥳'];
+  const list=document.getElementById('sl-list');
+  if(!data.length){list.innerHTML='<div class="empty"><i class="ti ti-moon"></i>No sleep entries yet</div>';document.getElementById('sl-stats').innerHTML='';return;}
+  list.innerHTML=data.slice().reverse().slice(0,30).map(e=>
+    `<div class="entry" data-id="${e._id}"><span>${parseFloat(e.hours).toFixed(1)} hrs · ${e.bed}–${e.wake} · ${qe[e.quality]}${e.note?' — <span style="color:var(--muted)">'+e.note+'</span>':''}</span><div style="display:flex;align-items:center;gap:8px"><span class="entry-date">${fmtD(e.date)}</span>${actionBtns(e._id,'sleep')}</div></div>`
+  ).join('');
+  list.querySelectorAll('.entry').forEach(row=>{
+    row.addEventListener('click',e=>{if(e.target.closest('.entry-actions'))return;
+      const id=row.dataset.id,en=data.find(x=>x._id===id);if(!en)return;
+      slEditId=id;selSleep=en.quality;[1,2,3,4,5].forEach(i=>document.getElementById('sq'+i).classList.toggle('on',i===en.quality));
+      document.getElementById('sl-bed').value=en.bed;document.getElementById('sl-wake').value=en.wake;
+      document.getElementById('sl-date').value=en.date;document.getElementById('sl-note').value=en.note||'';
+      document.getElementById('sl-edit-banner').style.display='flex';document.getElementById('sl-save-btn').textContent='Update sleep';
+      document.getElementById('sl-bed').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+  list.querySelectorAll('.btn-danger').forEach(btn=>btn.addEventListener('click',async e=>{e.stopPropagation();if(!confirm('Delete?'))return;await dbDel('sleep',btn.dataset.id);slResetForm();renderSleep();}));
+  const avg=(data.reduce((a,b)=>a+parseFloat(b.hours),0)/data.length).toFixed(1);
+  const l7=data.slice(-7),avg7=l7.length?(l7.reduce((a,b)=>a+parseFloat(b.hours),0)/l7.length).toFixed(1):avg;
+  const avgQ=(data.reduce((a,b)=>a+b.quality,0)/data.length).toFixed(1);
+  document.getElementById('sl-stats').innerHTML=tile('Avg sleep (7d)',avg7+' hrs')+tile('Quality',avgQ+'/5')+tile('Entries',data.length);
+  mkChart('sl-chart','bar',data.slice(-20).map(e=>fmtD(e.date)),[{data:data.slice(-20).map(e=>parseFloat(e.hours)),backgroundColor:'rgba(94,207,168,0.7)',borderColor:'#5ecfa8',borderWidth:1}],0);
+}
+
+// ── AI CHAT ──────────────────────────────────────────────────────────────────
+async function getAllDataForAI() {
+  const [W,B,M,Me,E,S] = await Promise.all([
+    dbAll('weight'),dbAll('blood'),dbAll('mood'),dbAll('meds'),dbAll('exercise'),dbAll('sleep')
+  ]);
+  return {
+    weight: W.map(e=>({date:e.date,kg:parseFloat(e.val),fat:e.fat,note:e.note})),
+    labs: B.map(e=>({date:e.date,test:e.test,value:e.val,note:e.note})),
+    mood: M.map(e=>({date:e.date,mood:e.mood,energy:e.energy,anxiety:e.anxiety,note:e.note})),
+    medications: Me.map(e=>({name:e.name,dose:e.dose,freq:e.freq,since:e.start})),
+    exercise: E.map(e=>({date:e.date,type:e.type,minutes:e.dur,km:e.dist,kcal:e.cal,note:e.note})),
+    sleep: S.map(e=>({date:e.date,hours:parseFloat(e.hours),quality:e.quality,bedtime:e.bed,wake:e.wake,note:e.note}))
+  };
+}
+
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('chat-send-btn');
+let chatHistory = [];
+
+function addMsg(role, text) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = text.replace(/\n/g,'<br>');
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  return div;
+}
+
+async function sendChat() {
+  const text = chatInput.value.trim();
+  if(!text) return;
+  chatInput.value='';
+  chatSendBtn.disabled=true;
+  addMsg('user', text);
+  const thinking = addMsg('ai thinking','<i class="ti ti-dots spin"></i> Analysing your data…');
+
+  const healthData = await getAllDataForAI();
+  chatHistory.push({role:'user',content:text});
+
+  const systemPrompt = `You are Vita AI, a personal health data analyst assistant embedded in the user's health tracking app.
+You have access to the user's real health data below. Analyse it thoughtfully and answer their questions.
+Be concise but insightful. Spot trends, patterns, correlations. Suggest observations but never give medical advice.
+Format responses clearly — use short paragraphs, bullet points or simple comparisons where helpful.
+If the user asks to "make a graph" or "show a chart", describe what the chart would show and what the data reveals — the app cannot render charts in this chat.
+If there's not enough data to answer, say so honestly.
+
+USER HEALTH DATA (JSON):
+${JSON.stringify(healthData, null, 2)}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system: systemPrompt,
+        messages: chatHistory
+      })
+    });
+    const data = await res.json();
+    const reply = data.content?.map(b=>b.text||'').join('') || 'Sorry, I could not get a response.';
+    chatHistory.push({role:'assistant',content:reply});
+    thinking.remove();
+    addMsg('ai', reply);
+  } catch(e) {
+    thinking.remove();
+    addMsg('ai','⚠️ Could not reach Vita AI. Check your connection.');
+  }
+  chatSendBtn.disabled=false;
+}
+
+chatSendBtn.addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();} });
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => { chatInput.value=chip.dataset.q; sendChat(); });
+});
+
+// ── Render map & init ─────────────────────────────────────────────────────────
+const renders = { dashboard:renderDashboard, weight:renderWeight, blood:renderBlood, mood:renderMood, meds:renderMeds, exercise:renderEx, sleep:renderSleep };
+renderDashboard();
+</script>
 </body>
 </html>
